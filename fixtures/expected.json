@@ -1,0 +1,180 @@
+{
+  "generated_by": "scripts/make-fixtures.mjs",
+  "note": "Synthetic data. Amounts in rand. Use these to assert parser and query results.",
+  "files": {
+    "01_card_sales_semicolon_win1252.csv": {
+      "encoding": "windows-1252",
+      "delimiter": ";",
+      "decimal_separator": ",",
+      "thousands_separator": " ",
+      "date_order": "dmy",
+      "date_format_example": "dd/mm/yyyy",
+      "preamble_lines": 4,
+      "header_line_1based": 5,
+      "excluded_rows": 1,
+      "excluded_rows_note": "the final \"Total\" line",
+      "data_rows": 240,
+      "columns": 9,
+      "column_names": [
+        "Transaction Date",
+        "Time",
+        "Terminal",
+        "Store",
+        "Card Type",
+        "Reference",
+        "Gross Amount",
+        "Fee",
+        "Net Amount"
+      ],
+      "pii_columns": [],
+      "date_range": [
+        "2026-10-01",
+        "2026-10-31"
+      ],
+      "sums": {
+        "gross_amount": 287418.53,
+        "fee": 8040.79,
+        "net_amount": 279377.74
+      },
+      "refund_rows": 6,
+      "net_by_store": {
+        "Pietermaritzburg Padstal": 99284.58,
+        "Müller Bakkery Pretoria": 89591.22,
+        "Café Rosé Sandton": 90501.94
+      },
+      "reconcile_example": "SUM(net_amount) grouped by store must equal sums.net_amount",
+      "warnings_expected": [
+        "none required; the first/second date parts include values above 12, so day-first is unambiguous"
+      ]
+    },
+    "02_webstore_orders_utf8bom.csv": {
+      "encoding": "utf-8 (with BOM)",
+      "line_endings": "CRLF",
+      "delimiter": ",",
+      "decimal_separator": ".",
+      "thousands_separator": null,
+      "date_order": "iso",
+      "date_format_example": "yyyy-mm-dd hh:mm:ss +0200 (a timestamp with offset)",
+      "preamble_lines": 0,
+      "header_line_1based": 1,
+      "excluded_rows": 0,
+      "data_rows": 180,
+      "columns": 12,
+      "column_names": [
+        "Order ID",
+        "Created at",
+        "Customer name",
+        "Customer email",
+        "Phone",
+        "Product",
+        "Quantity",
+        "Unit price",
+        "Discount",
+        "Total",
+        "Payment status",
+        "Province"
+      ],
+      "pii_columns": [
+        "Customer name",
+        "Customer email",
+        "Phone"
+      ],
+      "date_range": [
+        "2026-10-01",
+        "2026-10-31"
+      ],
+      "sums": {
+        "total_all_statuses": 38362,
+        "total_paid_only": 30413.8,
+        "discount": 767
+      },
+      "paid_rows": 146,
+      "rows_by_status": {
+        "paid": 146,
+        "refunded": 20,
+        "pending": 14
+      },
+      "paid_total_by_province": {
+        "Mpumalanga": 3969.8,
+        "Limpopo": 3161.5,
+        "Eastern Cape": 2547,
+        "Free State": 3418.5,
+        "Gauteng": 4110,
+        "North West": 3495.4,
+        "KwaZulu-Natal": 4056.5,
+        "Western Cape": 3422,
+        "Northern Cape": 2233.1
+      },
+      "paid_units_by_product": {
+        "Biltong 250g": 35,
+        "Candle, soy": 52,
+        "Hot sauce 150ml": 46,
+        "Notebook A5": 55,
+        "Ceramic mug": 43,
+        "Rooibos tea, 100 bags": 33,
+        "Cotton tote bag": 53,
+        "Honey 500g": 40
+      },
+      "quoted_field_example": "Product \"Rooibos tea, 100 bags\" contains a comma and is quoted",
+      "privacy_expectation": "No value from the three PII columns may appear in any prompt sent to the model; use placeholders"
+    },
+    "03_bank_statement_comma_quoted.csv": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "decimal_separator": ".",
+      "thousands_separator": ",",
+      "date_order": "dmy",
+      "date_format_example": "dd/mm/yyyy",
+      "preamble_lines": 2,
+      "header_line_1based": 3,
+      "excluded_rows": 1,
+      "excluded_rows_note": "the final \"Total\" line",
+      "data_rows": 150,
+      "columns": 4,
+      "column_names": [
+        "Date",
+        "Description",
+        "Amount",
+        "Balance"
+      ],
+      "pii_columns": [],
+      "date_range": [
+        "2026-10-01",
+        "2026-10-31"
+      ],
+      "sums": {
+        "amount_net": 61455.38,
+        "credits": 485786.43,
+        "debits": -424331.05
+      },
+      "credit_rows": 57,
+      "debit_rows": 93,
+      "final_balance": 106665.88,
+      "notes": "Amounts over 999.99 are quoted because they contain a comma. Debits are negative numbers."
+    },
+    "04_ambiguous_dates.csv": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "decimal_separator": ".",
+      "date_order": "dmy",
+      "preamble_lines": 0,
+      "header_line_1based": 1,
+      "excluded_rows": 0,
+      "data_rows": 30,
+      "columns": 3,
+      "column_names": [
+        "Date",
+        "Item",
+        "Amount"
+      ],
+      "pii_columns": [],
+      "sums": {
+        "amount": 13167.02
+      },
+      "warnings_expected": [
+        "date order ambiguous: no value has a part above 12; day-first assumed (South African norm)"
+      ],
+      "notes": "Reparse with date_order \"mdy\" must change the parsed dates (and the date range) but not the sum."
+    }
+  }
+}
