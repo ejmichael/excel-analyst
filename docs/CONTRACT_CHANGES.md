@@ -38,3 +38,26 @@ Entry format:
   and in `API_CONTRACT.md` change the 422 row to "`details: ValidationFailedDetails` (absent for malformed JSON or bodies over 100 KB)".
 - Affects: every endpoint that validates input; `api-types.ts`; client `lib/errors.ts` (`fieldErrorsFrom`). No behaviour change on either side.
 - Status: PROPOSED
+
+## 2026-11-09: Forced tool calls are not supported by Claude Sonnet 5.5 (from: server)
+- What: `LLM_PROMPTS.md` requires a forced tool call (`tool_choice` naming the tool) for all three calls. Tested on 2026-11-09 through OpenRouter, `anthropic/claude-sonnet-5.5` rejects it from every provider, including Anthropic directly: "tool_choice: type "tool" and "any" are not supported for this model." `anthropic/claude-haiku-5.5` accepts it.
+- Why: the planner (Part 3) uses `ANTHROPIC_MODEL_PLANNER`. If that stays Sonnet 5.5, the planner call as specified cannot be made. Suggestions (Part 2) and the narrator are unaffected if `ANTHROPIC_MODEL_FAST` is Haiku 5.5.
+- Proposed shape (pick one for the planner): (a) keep the forced tool call and use a planner model that supports it; (b) for models that reject forced tool choice, send the single tool with `tool_choice: "auto"` and a system line "Always answer by calling the <tool> tool", treat a reply without the tool call as a failure (one retry, then 502 `llm_failed`). Tested: Sonnet 5.5 called the tool; (c) use structured output (`response_format` json_schema, strict) with the same schema. Tested: valid JSON from Sonnet 5.5. In all cases the output is still validated with zod.
+- Also: `LLM_PROMPTS.md` sets temperature 0.3 (narrator, suggestions) and 0 (planner). Claude Sonnet 5.5 and Haiku 5.5 return a 400 for any non-default temperature on the Anthropic API, and OpenRouter silently drops it for them (its model list does not include `temperature` for either). Until this is decided, the server sends `temperature` only through OpenRouter (where it is ignored for these models) and never through the Anthropic provider. Proposed: drop the temperature values from `LLM_PROMPTS.md`, or keep them as "where the model supports it".
+- Affects: `LLM_PROMPTS.md` (header paragraph), `server/src/llm/client.ts`, slice S2 (planner). Not S1 if the fast model supports forced tools.
+- Status: PROPOSED
+
+## 2026-11-10: Structured details for a dataset that failed on a plan limit (from: client)
+- What: Flow A says a file over `max_rows` ends `failed` with `error_message` "Your plan allows N rows; this file has M." and no 402. The client has to parse that sentence to offer the upgrade dialog, and it cannot know `upgrade_to` (only the server knows the plan table), so the dialog names no plan.
+- Why: matching words is brittle (any rewording breaks it), and the dialog cannot say which plan allows the file.
+- Proposed shape: add `error_details: PlanLimitDetails | null` to `Dataset` (set only when profiling failed on a plan limit, else null). The client would use it instead of the message text.
+- Also unspecified: what `PlanLimitDetails.used` means for `max_file_mb` (megabytes, rounded how?). The client currently shows it with one decimal.
+- Affects: `api-types.ts` (`Dataset`), `GET /datasets`, `GET /datasets/:id`, client `DatasetPage` (`rowLimitFrom`).
+- Status: PROPOSED
+
+## 2026-11-10: Dataset name and column display-name lengths, and what a reparse keeps (from: client)
+- What: (1) The contract gives no bounds for `UpdateDatasetRequest.name`, `columns[].display_name` or the upload's `name` field. The client mock assumes name 1 to 200 characters and display name 1 to 120 (or null), and the inputs cap at those lengths. (2) The Part 2 brief says column edits (display name, meaning, Private, VAT) are kept after `POST /datasets/:id/reparse` "where the column still exists", but the contract only says reparse re-runs steps b to h. It does not say whether `dataset_columns` edits survive, or how a column is matched (by `sql_name`?).
+- Why: the server needs these to validate and to rebuild columns; the client tells users their edits are kept, which must be true.
+- Proposed shape: state the bounds in the Datasets table; add to the reparse row: "keeps `display_name`, `semantic`, `is_pii` and `vat_included` for columns whose `sql_name` is unchanged".
+- Affects: `PATCH /datasets/:id`, `POST /datasets`, `POST /datasets/:id/reparse`.
+- Status: PROPOSED

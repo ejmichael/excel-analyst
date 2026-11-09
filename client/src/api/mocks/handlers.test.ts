@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, apiFetch, configureApiClient } from '../client';
 import { getMe, updateMe } from '../me';
 import { createWorkspace, deleteWorkspace, listWorkspaces, updateWorkspace } from '../workspaces';
 import { mockAuthBackend } from './auth';
-import { mockTransport, setMockLatency } from './handlers';
+import { mockTransport, mockUploadTransport, setMockLatency } from './handlers';
+import { MOCK_PROFILING_MS, handleUpload } from './datasets';
+import { deleteDataset, getDataset, getDatasetPreview, listDatasets, reparseDataset, updateDataset, uploadDataset } from '../datasets';
 import { mockStore } from './store';
 
 const caught = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e as ApiError);
@@ -76,5 +78,109 @@ describe('mock API behaves like the contract', () => {
   it('returns 401 without a session', async () => {
     await mockAuthBackend.signOut();
     expect((await caught(apiFetch('/me')))?.status).toBe(401);
+  });
+});
+
+describe('mock datasets behave like the contract', () => {
+  beforeEach(async () => {
+    setMockLatency(0);
+    mockStore.reset();
+    configureApiClient({
+      transport: mockTransport,
+      uploadTransport: mockUploadTransport,
+      getAccessToken: async () => (await mockAuthBackend.getSession())?.access_token ?? null,
+      refreshAccessToken: async () => null,
+      onUnauthorized: () => {},
+      onConsentRequired: () => {},
+    });
+    await mockAuthBackend.signIn('owner@example.co.za', 'password123');
+    await updateMe({ accept_terms: true });
+  });
+
+  const upload = async (file: File) => {
+    const [ws] = await listWorkspaces();
+    return uploadDataset({ file, workspace_id: ws!.id }, { onProgress: () => {}, signal: new AbortController().signal });
+  };
+  const csv = (name: string, text = 'Date,Amount\n01/10/2026,10.00\n') => new File([text], name, { type: 'text/csv' });
+
+  it('uploads a fixture, profiles it, then turns ready with its suggestions', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const created = await upload(csv('04_ambiguous_dates.csv'));
+      expect(created.status).toBe('profiling');
+      vi.setSystemTime(Date.now() + MOCK_PROFILING_MS + 1);
+      const detail = await getDataset(created.id);
+      expect(detail.status).toBe('ready');
+      expect(detail.warnings).toHaveLength(1);
+      expect(detail.suggestions.length).toBeGreaterThan(0);
+      expect(detail.expires_at).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses non-CSV content with 415, even with a .csv name', async () => {
+    const binary = new File([new Uint8Array([0x50, 0x4b, 0, 0, 1])], 'trick.csv');
+    expect((await caught(upload(binary)))?.status).toBe(415);
+    expect((await caught(upload(new File(['hello'], 'notes.pdf'))))?.status).toBe(415);
+  });
+
+  it('refuses files above the hard ceiling (413) and above the plan (402 max_file_mb)', async () => {
+    // jsdom copies a File put into FormData (losing an overridden size), so call the handler with a stub form.
+    const user = mockStore.findUser('owner@example.co.za')!;
+    const [ws] = await listWorkspaces();
+    const sized = (mb: number) => {
+      const f = csv('big.csv');
+      Object.defineProperty(f, 'size', { value: mb * 1024 * 1024 + 1 });
+      const fields: Record<string, unknown> = { file: f, workspace_id: ws!.id };
+      return { get: (key: string) => fields[key] ?? null } as unknown as FormData;
+    };
+    expect((await handleUpload(user, sized(50))).status).toBe(413);
+    const planLimit = await handleUpload(user, sized(5));
+    expect(planLimit.status).toBe(402);
+    expect(planLimit.body).toMatchObject({ error: { code: 'plan_limit', details: { limit_key: 'max_file_mb', limit: 5, upgrade_to: 'solo' } } });
+  });
+
+  it('refuses the fourth upload of the month on Free with 402 max_datasets_per_month', async () => {
+    for (let i = 0; i < 3; i += 1) await upload(csv(`file${i}.csv`));
+    expect((await caught(upload(csv('file4.csv'))))?.planLimit).toEqual({
+      limit_key: 'max_datasets_per_month',
+      limit: 3,
+      used: 3,
+      upgrade_to: 'solo',
+    });
+    expect((await getMe()).usage.uploads).toBe(3);
+  });
+
+  it('turns Private on when a meaning becomes personal, unless the request sets it', async () => {
+    const created = await upload(csv('02_webstore_orders_utf8bom.csv'));
+    const { columns } = await getDataset(created.id);
+    const product = columns.find((c) => c.name === 'Product')!;
+    const province = columns.find((c) => c.name === 'Province')!;
+    const updated = await updateDataset(created.id, {
+      columns: [
+        { id: product.id, semantic: 'person_name' },
+        { id: province.id, semantic: 'address', is_pii: false },
+      ],
+    });
+    expect(updated.columns.find((c) => c.id === product.id)?.is_pii).toBe(true);
+    expect(updated.columns.find((c) => c.id === province.id)?.is_pii).toBe(false);
+  });
+
+  it('reparse goes back to profiling; preview needs ready (409) and expired is 410', async () => {
+    const created = await upload(csv('04_ambiguous_dates.csv'));
+    expect((await caught(getDatasetPreview(created.id, 50)))?.code).toBe('dataset_not_ready');
+    expect((await caught(reparseDataset(created.id, { date_format: 'mdy' })))?.code).toBe('dataset_not_ready');
+  });
+
+  it('lists newest first per workspace and deletes', async () => {
+    const a = await upload(csv('a.csv'));
+    const b = await upload(csv('b.csv'));
+    const [ws] = await listWorkspaces();
+    const page = await listDatasets(ws!.id, { limit: 1, offset: 0 });
+    expect(page.total).toBe(2);
+    expect(page.items.map((d) => d.id)).toEqual([b.id]);
+    expect(await deleteDataset(a.id)).toEqual({ deleted: true });
+    expect((await caught(getDataset(a.id)))?.status).toBe(404);
   });
 });

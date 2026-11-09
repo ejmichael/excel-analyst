@@ -1,4 +1,5 @@
 import type { Me, Plan, PlanLimits, Usage, Workspace } from '../types';
+import type { MockDataset } from './datasets';
 
 /** Mirrors the plan_limits seed in db/schema.sql. */
 export const MOCK_PLAN_LIMITS: Record<Plan, PlanLimits> = {
@@ -81,6 +82,8 @@ export interface MockUser {
   brand_color: string;
   popia_consent_at: string | null;
   workspaces: Workspace[];
+  /** Optional so sessions saved before datasets existed still load. */
+  datasets?: MockDataset[];
 }
 
 /** First day of the current month in SAST (UTC+2, no DST), as YYYY-MM-DD. */
@@ -98,7 +101,7 @@ export function sastTimestamp(now = new Date()): string {
 export function buildMe(user: MockUser): Me {
   const usage: Usage = {
     month_start: sastMonthStart(),
-    uploads: 0,
+    uploads: (user.datasets ?? []).filter((ds) => ds.detail.created_at.slice(0, 10) >= sastMonthStart()).length,
     questions: 0,
     reports: 0,
     report_runs: 0,
@@ -132,5 +135,6 @@ export function newMockUser(email: string, password: string): MockUser {
     popia_consent_at: null,
     // Same as the DB trigger: every new user gets one default workspace.
     workspaces: [{ id: crypto.randomUUID(), name: 'My workspace', is_default: true, created_at: sastTimestamp() }],
+    datasets: [],
   };
 }

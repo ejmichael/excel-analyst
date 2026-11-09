@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatNumber, formatPercent, formatZar } from './format';
+import { formatBytes, formatCell, formatDate, formatNumber, formatPercent, formatZar } from './format';
 
 describe('formatZar', () => {
   it('uses the en-ZA rand format', () => {
@@ -34,5 +34,19 @@ describe('formatDate', () => {
     // 23:30 UTC on 1 November is already 2 November in Johannesburg.
     expect(formatDate('2026-11-01T23:30:00Z')).toBe('2 November 2026');
     expect(formatDate('2026-11-02T08:00:00+02:00')).toBe('2 November 2026');
+  });
+});
+
+describe('formatBytes and formatCell', () => {
+  it('formats sizes in en-ZA kB and MB', () => {
+    expect(formatBytes(820)).toBe(new Intl.NumberFormat('en-ZA', { style: 'unit', unit: 'kilobyte', maximumFractionDigits: 1 }).format(820 / 1024));
+    expect(formatBytes(4.2 * 1024 * 1024)).toMatch(/^4,2\s?MB$/);
+  });
+
+  it('keeps every decimal the API sent, and reads dates in words', () => {
+    expect(formatCell(1234.567, 'decimal')).toBe(new Intl.NumberFormat('en-ZA', { maximumFractionDigits: 10 }).format(1234.567));
+    expect(formatCell('2026-11-02', 'date')).toBe('2 November 2026');
+    expect(formatCell(null)).toBe('');
+    expect(formatCell(true)).toBe('Yes');
   });
 });

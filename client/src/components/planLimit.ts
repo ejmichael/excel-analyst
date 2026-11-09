@@ -19,7 +19,7 @@ const FEATURES: Partial<Record<LimitKey, string>> = {
 };
 
 /** The plain-words sentence for what was hit, e.g. "Your Free plan includes 1 workspace. You are using 1." */
-export function describePlanLimit(details: PlanLimitDetails, plan: Plan): string {
+export function describePlanLimit(details: Omit<PlanLimitDetails, 'upgrade_to'>, plan: Plan): string {
   const planName = `Your ${PLAN_LABELS[plan]} plan`;
   const { limit_key: key, limit, used } = details;
 
@@ -38,7 +38,8 @@ export function describePlanLimit(details: PlanLimitDetails, plan: Plan): string
     return `${planName} allows files of up to ${plural(limit, 'row', 'rows')}. This file has ${formatNumber(used, 0)}.`;
   }
   if (key === 'max_file_mb') {
-    return `${planName} allows files of up to ${formatNumber(limit)} MB.`;
+    const size = used > 0 ? ` This file is ${formatNumber(used, 1)} MB.` : '';
+    return `${planName} allows files of up to ${formatNumber(limit)} MB.${size}`;
   }
   return `You have reached a limit of your ${PLAN_LABELS[plan]} plan.`;
 }

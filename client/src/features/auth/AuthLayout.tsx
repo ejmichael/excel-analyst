@@ -24,7 +24,7 @@ export function AuthLayout({ title, intro, children, footer }: { title: string; 
           {env.useMocks && (
             <p className="rounded-md border border-dashed bg-card/60 px-3 py-2 text-center text-sm text-muted-foreground">
               Mock mode: nothing is sent to Supabase or the server. Any email with a password of 8 or more characters signs
-              you in.
+              you in. Use demo@example.co.za to start with example files.
             </p>
           )}
         </div>

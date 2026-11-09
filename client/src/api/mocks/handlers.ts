@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { ApiError, ErrorCode, PlanLimitDetails, Workspace } from '../types';
-import type { Transport } from '../client';
+import type { Transport, UploadTransport } from '../client';
 import { buildMe, cheapestPlanAllowing, sastTimestamp, type MockUser } from './data';
+import { handleUpload, routeDatasets } from './datasets';
 import { mockStore } from './store';
 
 /**
@@ -128,6 +129,8 @@ function route(method: string, path: string, user: MockUser, body: unknown): Res
     if (method === 'DELETE') {
       if (workspace.is_default) return fail(409, 'conflict', 'The default workspace cannot be deleted.');
       user.workspaces = user.workspaces.filter((w) => w.id !== id);
+      // Contract: deleting a workspace deletes its datasets too.
+      user.datasets = (user.datasets ?? []).filter((ds) => ds.detail.workspace_id !== id);
       mockStore.save();
       return ok({ deleted: true as const });
     }
@@ -138,7 +141,8 @@ function route(method: string, path: string, user: MockUser, body: unknown): Res
 
 export const mockTransport: Transport = async (url, init) => {
   if (latencyMs > 0) await new Promise((resolve) => setTimeout(resolve, latencyMs));
-  const path = new URL(url).pathname.replace(/^\/api\/v1/, '');
+  const parsedUrl = new URL(url);
+  const path = parsedUrl.pathname.replace(/^\/api\/v1/, '');
   const method = (init.method ?? 'GET').toUpperCase();
   const auth = new Headers(init.headers).get('Authorization');
   const token = auth?.startsWith('Bearer ') ? auth.slice('Bearer '.length) : null;
@@ -148,6 +152,14 @@ export const mockTransport: Transport = async (url, init) => {
   const user = mockStore.userByToken(token);
   if (!user) return fail(401, 'unauthorized', 'Missing or invalid token.');
 
+  if (init.body instanceof FormData) {
+    if (!user.popia_consent_at) return fail(403, 'consent_required', 'Accept the terms and privacy notice first.');
+    if (path !== '/datasets' || method !== 'POST') return fail(404, 'not_found', 'Not found.');
+    const result = await handleUpload(user, init.body);
+    mockStore.save();
+    return json(result.status, result.body);
+  }
+
   let body: unknown = undefined;
   if (typeof init.body === 'string') {
     try {
@@ -156,5 +168,37 @@ export const mockTransport: Transport = async (url, init) => {
       return fail(422, 'validation_failed', 'The request body is not valid JSON.');
     }
   }
+
+  if (path.startsWith('/datasets')) {
+    if (!user.popia_consent_at) return fail(403, 'consent_required', 'Accept the terms and privacy notice first.');
+    const result = routeDatasets(method, parsedUrl, user, body);
+    mockStore.save();
+    if (result) return json(result.status, result.body);
+  }
   return route(method, path, user, body);
+};
+
+/**
+ * Mock upload: reports progress in steps the way XHR upload events would, honours Cancel,
+ * then answers through the same mock routes.
+ */
+export const mockUploadTransport: UploadTransport = async (url, { form, headers, onProgress, signal }) => {
+  const file = form.get('file');
+  const size = file instanceof File ? file.size : 0;
+  const steps = Math.min(10, Math.max(3, Math.ceil(size / 200_000)));
+  for (let step = 1; step <= steps; step += 1) {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, latencyMs === 0 ? 0 : 150);
+      signal.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer);
+          reject(new DOMException('The upload was cancelled.', 'AbortError'));
+        },
+        { once: true },
+      );
+    });
+    onProgress(step / steps);
+  }
+  return mockTransport(url, { method: 'POST', headers, body: form, signal });
 };

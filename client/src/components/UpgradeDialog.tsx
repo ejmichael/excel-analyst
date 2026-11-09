@@ -10,9 +10,15 @@ import {
 } from '@/components/ui/dialog';
 import { describePlanLimit, describeUpgrade } from './planLimit';
 
+/**
+ * A limit the client detected itself (for example, file size before upload, or a row-limit failure message).
+ * It has no `upgrade_to`, because only the server knows which plan allows more, so no plan is named.
+ */
+export type LocalPlanLimit = Omit<PlanLimitDetails, 'upgrade_to'>;
+
 interface UpgradeDialogProps {
-  /** From ApiError.planLimit (402 plan_limit). The dialog is open while this is set. */
-  details: PlanLimitDetails | null;
+  /** From ApiError.planLimit (402 plan_limit), or a LocalPlanLimit. The dialog is open while this is set. */
+  details: PlanLimitDetails | LocalPlanLimit | null;
   plan: Plan;
   onClose: () => void;
 }
@@ -28,7 +34,7 @@ export function UpgradeDialog({ details, plan, onClose }: UpgradeDialogProps) {
             <DialogDescription asChild>
               <div className="space-y-2 text-base text-foreground">
                 <p>{describePlanLimit(details, plan)}</p>
-                <p>{describeUpgrade(details.upgrade_to)}</p>
+                {'upgrade_to' in details && <p>{describeUpgrade(details.upgrade_to)}</p>}
               </div>
             </DialogDescription>
           )}

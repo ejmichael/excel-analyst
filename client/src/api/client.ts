@@ -1,6 +1,7 @@
 import type { ApiError as ApiErrorBody, ErrorCode, PlanLimitDetails } from './types';
 import { API_BASE } from '@/env';
 import { ERROR_MESSAGES, NETWORK_ERROR_MESSAGE, fieldErrorsFrom, isErrorCode } from '@/lib/errors';
+import { xhrUpload } from './xhrUpload';
 
 /** Thrown by apiFetch for every non-2xx response, and for network failures (status 0). */
 export class ApiError extends Error {
@@ -9,6 +10,8 @@ export class ApiError extends Error {
   readonly details: unknown;
   /** The server's own message; `message` is the user-facing text. */
   readonly serverMessage: string | null;
+  /** From the Retry-After header on 429, in seconds. */
+  retryAfterSeconds: number | null = null;
 
   constructor(status: number, code: ErrorCode, message: string, details?: unknown, serverMessage?: string | null) {
     super(message);
@@ -36,6 +39,7 @@ export type Transport = (url: string, init: RequestInit) => Promise<Response>;
 
 interface ClientConfig {
   transport: Transport;
+  uploadTransport: UploadTransport;
   getAccessToken: () => Promise<string | null>;
   /** Returns a fresh token, or null if the session cannot be refreshed. */
   refreshAccessToken: () => Promise<string | null>;
@@ -45,6 +49,7 @@ interface ClientConfig {
 
 const config: ClientConfig = {
   transport: (url, init) => fetch(url, init),
+  uploadTransport: (url, request) => xhrUpload(url, request),
   getAccessToken: async () => null,
   refreshAccessToken: async () => null,
   onUnauthorized: () => {},
@@ -77,31 +82,30 @@ export interface ApiRequest {
   signal?: AbortSignal;
 }
 
-async function send(path: string, { method = 'GET', body, signal }: ApiRequest, token: string | null) {
-  const headers: Record<string, string> = { Accept: 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+function authHeaders(token: string | null): Record<string, string> {
+  return token ? { Accept: 'application/json', Authorization: `Bearer ${token}` } : { Accept: 'application/json' };
+}
+
+/** Network failures become a readable ApiError; aborts stay AbortErrors so callers can tell them apart. */
+async function guarded(send: () => Promise<Response>): Promise<Response> {
   try {
-    return await config.transport(`${API_BASE}${path}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal,
-    });
+    return await send();
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
     throw new ApiError(0, 'internal', NETWORK_ERROR_MESSAGE);
   }
 }
 
-/** Calls our API with the Supabase access token, unwraps { data } and throws ApiError otherwise. */
-export async function apiFetch<T>(path: string, request: ApiRequest = {}): Promise<T> {
-  let response = await send(path, request, await config.getAccessToken());
+/**
+ * The shared request cycle: token, one refresh-and-retry on 401 (expired tokens get 401 too),
+ * unwrap { data }, or throw ApiError and fire the global 401 / consent_required handlers.
+ */
+async function authorised<T>(send: (headers: Record<string, string>) => Promise<Response>): Promise<T> {
+  let response = await guarded(async () => send(authHeaders(await config.getAccessToken())));
 
-  // An expired token also gets 401: refresh the session and retry once before giving up.
   if (response.status === 401) {
     const refreshed = await config.refreshAccessToken().catch(() => null);
-    if (refreshed) response = await send(path, request, refreshed);
+    if (refreshed) response = await guarded(() => send(authHeaders(refreshed)));
   }
 
   const payload: unknown = await response.json().catch(() => null);
@@ -114,9 +118,42 @@ export async function apiFetch<T>(path: string, request: ApiRequest = {}): Promi
   }
 
   const error = toApiError(response.status, payload);
+  const retryAfter = Number(response.headers.get('Retry-After'));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) error.retryAfterSeconds = retryAfter;
   if (error.status === 401) config.onUnauthorized();
   else if (error.code === 'consent_required') config.onConsentRequired();
   throw error;
+}
+
+/** Calls our API with the Supabase access token, unwraps { data } and throws ApiError otherwise. */
+export function apiFetch<T>(path: string, { method = 'GET', body, signal }: ApiRequest = {}): Promise<T> {
+  return authorised<T>((headers) =>
+    config.transport(`${API_BASE}${path}`, {
+      method,
+      headers: body === undefined ? headers : { ...headers, 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+export interface UploadRequest {
+  form: FormData;
+  headers: Record<string, string>;
+  onProgress: (fraction: number) => void;
+  signal: AbortSignal;
+}
+
+/** Sends a multipart POST and reports upload progress. XHR in real mode (fetch has no upload progress). */
+export type UploadTransport = (url: string, request: UploadRequest) => Promise<Response>;
+
+/** Multipart POST with progress; same auth, error mapping and global handlers as apiFetch. */
+export function apiUpload<T>(
+  path: string,
+  form: FormData,
+  { onProgress, signal }: { onProgress: (fraction: number) => void; signal: AbortSignal },
+): Promise<T> {
+  return authorised<T>((headers) => config.uploadTransport(`${API_BASE}${path}`, { form, headers, onProgress, signal }));
 }
 
 function toApiError(status: number, payload: unknown): ApiError {

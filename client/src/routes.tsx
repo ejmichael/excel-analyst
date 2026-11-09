@@ -6,6 +6,9 @@ import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { SignInPage } from '@/features/auth/SignInPage';
 import { SignUpPage } from '@/features/auth/SignUpPage';
 import { ConsentPage } from '@/features/consent/ConsentPage';
+import { AskPlaceholderPage } from '@/features/datasets/AskPlaceholderPage';
+import { DatasetPage } from '@/features/datasets/DatasetPage';
+import { DatasetsPage } from '@/features/datasets/DatasetsPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { AppShell } from '@/features/shell/AppShell';
 import { LegalPlaceholderPage, NotFoundPage, PlaceholderPage } from '@/features/shell/pages';
@@ -46,7 +49,9 @@ export const routes: RouteObject[] = [
             element: <AppShell />,
             children: [
               { path: '/', element: <Navigate to="/datasets" replace /> },
-              { path: '/datasets', element: <PlaceholderPage title="Datasets" /> },
+              { path: '/datasets', element: <DatasetsPage /> },
+              { path: '/datasets/:id', element: <DatasetPage /> },
+              { path: '/datasets/:id/ask', element: <AskPlaceholderPage /> },
               { path: '/reports', element: <PlaceholderPage title="Reports" /> },
               { path: '/templates', element: <PlaceholderPage title="Templates" /> },
               { path: '/settings', element: <SettingsPage /> },

@@ -2,13 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useQueryClient } from '@tanstack/react-query';
 import { configureApiClient } from '@/api/client';
 import { mockAuthBackend } from '@/api/mocks/auth';
-import { mockTransport } from '@/api/mocks/handlers';
+import { mockTransport, mockUploadTransport } from '@/api/mocks/handlers';
 import { env } from '@/env';
 import type { AuthBackend, AuthSession } from './backend';
 import { supabaseBackend } from './supabaseBackend';
 
 export const defaultBackend: AuthBackend = env.useMocks ? mockAuthBackend : supabaseBackend;
-if (env.useMocks) configureApiClient({ transport: mockTransport });
+if (env.useMocks) configureApiClient({ transport: mockTransport, uploadTransport: mockUploadTransport });
 
 interface SessionContextValue {
   status: 'loading' | 'ready';

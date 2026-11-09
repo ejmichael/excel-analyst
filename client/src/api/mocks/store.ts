@@ -1,4 +1,8 @@
 import { newMockUser, type MockUser } from './data';
+import { seedDemoDatasets } from './datasets';
+
+/** Signing in as demo@… starts with example files in every state; any other email starts empty. */
+export const DEMO_EMAIL_PREFIX = 'demo@';
 
 /**
  * In-memory mock "database" and session. Mirrored to sessionStorage (best effort) so a page reload in
@@ -37,6 +41,7 @@ export const mockStore = {
   },
   createUser(email: string, password: string): MockUser {
     const user = newMockUser(email.trim().toLowerCase(), password);
+    if (user.email.startsWith(DEMO_EMAIL_PREFIX)) seedDemoDatasets(user);
     state.users[user.email] = user;
     persist();
     return user;
