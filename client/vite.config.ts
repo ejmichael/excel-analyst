@@ -9,7 +9,8 @@ export default defineConfig({
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, './src') },
   },
-  server: { port: 5173 },
+  // The API's CORS allows only CLIENT_URL (http://localhost:5173), so never drift to another port.
+  server: { port: 5173, strictPort: true },
   test: {
     globals: true,
     environment: 'jsdom',
