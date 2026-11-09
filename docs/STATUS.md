@@ -6,7 +6,7 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 ## Slices
 | Slice | Scope | Server | Client |
 |---|---|---|---|
-| S0 | Foundation, auth, consent, workspaces, me | DONE | TODO |
+| S0 | Foundation, auth, consent, workspaces, me | DONE | DONE |
 | S1 | Upload, parse, profile, preview | TODO | TODO |
 | S2 | Ask, verify, source rows | TODO | TODO |
 | S3 | Reports and branding | TODO | TODO |

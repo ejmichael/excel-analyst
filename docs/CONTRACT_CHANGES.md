@@ -29,3 +29,12 @@ Entry format:
 - Risks to test: suggested questions may be dull or redundant for some files (offer "add your own question" prominently); a draft report must never present a flagged block as clean.
 - Affects: endpoints above, `api-types.ts` (`AutoReportRun`), `API_CONTRACT.md` (new rows under Questions and blocks, Flow F), slice S3 (needs reports) and a "Build my report" button in the client dataset overview.
 - Status: PROPOSED
+
+## 2026-11-09: Specify the `validation_failed` details shape (from: client)
+- What: the contract says only "zod errors in `details`" for 422 `validation_failed`, and `api-types.ts` has no type for it. The server already sends `details: { fields: Array<{ location: 'body' | 'query' | 'params', path: string, message: string }> }` (documented in STATUS.md server notes, 2026-11-09).
+- Why: the client shows field errors next to the matching form field, so it needs a stable shape. Today it relies on the server note, not the contract.
+- Proposed shape: add to `api-types.ts`:
+  `export interface ValidationFailedDetails { fields: Array<{ location: 'body' | 'query' | 'params'; path: string; message: string }> }`
+  and in `API_CONTRACT.md` change the 422 row to "`details: ValidationFailedDetails` (absent for malformed JSON or bodies over 100 KB)".
+- Affects: every endpoint that validates input; `api-types.ts`; client `lib/errors.ts` (`fieldErrorsFrom`). No behaviour change on either side.
+- Status: PROPOSED
