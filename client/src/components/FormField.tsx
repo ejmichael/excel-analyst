@@ -1,4 +1,4 @@
-import { forwardRef, useId, useState, type ComponentProps, type ReactNode } from 'react';
+import { useId, useState, type ComponentProps, type ReactNode } from 'react';
 import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,10 +11,7 @@ interface FieldProps extends ComponentProps<'input'> {
 }
 
 /** A labelled input with its hint and error written out in words (never colour alone). */
-export const TextField = forwardRef<HTMLInputElement, FieldProps>(function TextField(
-  { label, error, hint, id, className, ...props },
-  ref,
-) {
+export function TextField({ label, error, hint, id, className, ref, ...props }: FieldProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
   const hintId = hint ? `${inputId}-hint` : undefined;
@@ -37,7 +34,7 @@ export const TextField = forwardRef<HTMLInputElement, FieldProps>(function TextF
       <FieldError id={errorId} message={error} />
     </div>
   );
-});
+}
 
 export function FieldError({ id, message }: { id?: string; message?: string }) {
   if (!message) return null;
@@ -50,10 +47,7 @@ export function FieldError({ id, message }: { id?: string; message?: string }) {
 }
 
 /** Password input with a show/hide toggle. */
-export const PasswordField = forwardRef<HTMLInputElement, Omit<FieldProps, 'type'>>(function PasswordField(
-  { label, error, hint, id, className, ...props },
-  ref,
-) {
+export function PasswordField({ label, error, hint, id, className, ref, ...props }: Omit<FieldProps, 'type'>) {
   const autoId = useId();
   const inputId = id ?? autoId;
   const [visible, setVisible] = useState(false);
@@ -91,7 +85,7 @@ export const PasswordField = forwardRef<HTMLInputElement, Omit<FieldProps, 'type
       <FieldError id={errorId} message={error} />
     </div>
   );
-});
+}
 
 /** A form-level message: an error, or a neutral notice. */
 export function FormMessage({ tone = 'error', children }: { tone?: 'error' | 'success' | 'info'; children: ReactNode }) {
