@@ -66,7 +66,6 @@ describe('OpenRouter provider', () => {
     expect(body).toMatchObject({
       model: models.fast,
       max_tokens: 100,
-      temperature: 0.3,
       tool_choice: { type: 'function', function: { name: 'give_colours' } },
       provider: { data_collection: 'deny' },
     });
@@ -75,6 +74,7 @@ describe('OpenRouter provider', () => {
       { role: 'user', content: 'Give two colours.' },
     ]);
     expect(init.headers.Authorization).toBe('Bearer k');
+    expect(body).not.toHaveProperty('temperature'); // Haiku 5.5 rejects it
   });
 
   it('falls back to the price table when the response has no cost', async () => {

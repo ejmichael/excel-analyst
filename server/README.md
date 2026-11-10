@@ -52,6 +52,7 @@ npm run typecheck
 npm test                    # unit tests, no network
 npm run test:integration    # real Supabase project from server/.env; the LLM is mocked
 RUN_LLM_TESTS=1 npm run test:llm   # opt-in: real model, prints suggestions, tokens and cost
+npm run test:cleanup        # delete leftover server test users (test+<12 hex>@example.com) and their files
 ```
 
 No test in `npm test` or `npm run test:integration` calls the real LLM. `test:llm` profiles the three non-ambiguous fixtures locally, sends each suggestions prompt to the configured provider, and prints the five questions with tokens and cost (about $0.0003 per file with Haiku 5.5). It writes nothing to the database. On Windows PowerShell: `$env:RUN_LLM_TESTS=1; npm run test:llm`.
@@ -64,7 +65,7 @@ The integration tests create two users named `test+<random>@example.com` with th
 
 - **Reads** use `supabaseForUser(token)`: the anon/publishable key plus the user's JWT, so RLS applies.
 - **Writes** use `supabaseAdmin()` (service role), always filtered by `owner_id = req.auth.userId`. The schema gives users no write policies, so plans, consent and limits cannot be changed through Supabase's REST API with a user token.
-- **Auth:** `Authorization: Bearer <access token>` is verified with `supabaseAdmin().auth.getUser(token)`.
+- **Auth:** `Authorization: Bearer <access token>` is verified with `supabaseAdmin().auth.getUser(token)`. A token Supabase rejects is 401. If Auth is unreachable the check is retried once, then the answer is 500 (or 429), never 401.
 
 ## Getting a test token
 
@@ -176,6 +177,7 @@ curl -s -X POST $API/internal/purge-expired -H "x-cron-secret: $CRON_SECRET"
 - **Hostile workbooks:** `XLSX_LIMITS` in `src/services/parsing/xlsx.ts` caps zip entries (10 000) and total unzipped size (500 MB). Inflated bytes are counted per part (sheet 500 MB, shared strings 64 MB, other parts 10 MB), along with shared strings (2 000 000), columns (500), row numbers (2 000 000) and cells per pass (25 000 000). Any DOCTYPE is refused. `test/unit/xlsx-hostile.test.ts` covers zip bombs, size-lying headers, entity bombs, external entities and renamed non-zip files.
 - **Uploads:** 10 per minute per user. A file over 50 MB is 413 on every plan, and a file over the plan's `max_file_mb` is 402. An upload counts against `max_datasets_per_month` once it is accepted, even if profiling fails later; a reparse does not count.
 - **Privacy:** the model sees only column labels, types, meanings, stats and 5 sample rows. PII columns are placeholders (`[email]`, `[phone]`, `[id]`, `[name]`, `[address]`) with no min or max, and each cell is cut to 80 characters inside `<data>` tags. OpenRouter requests send `provider.data_collection: "deny"`. Error messages and logs never contain cell values.
+- **Tool choice:** `src/config/models.ts` says per model whether the tool call can be forced and whether temperature is accepted. Models that reject forced choice (Sonnet 5.5) get `tool_choice: "auto"` plus an instruction, with one retry if they answer without the tool.
 - **LLM cost:** one `usage_events` row (`kind: llm`) per call, failures included. OpenRouter cost comes from its response; otherwise from `src/config/prices.ts`, never guessed.
 
 ## Layout

@@ -82,7 +82,6 @@ describe('generateSuggestions', () => {
     expect(vi.mocked(callTool).mock.calls[0]![0]).toMatchObject({
       role: 'fast',
       maxTokens: 600,
-      temperature: 0.3,
       tool: { name: 'suggest_questions' },
     });
     expect(recordLlmUsage).toHaveBeenCalledWith('owner', 'suggest', usage, expect.objectContaining({ dataset_id: 'ds' }));

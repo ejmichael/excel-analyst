@@ -1,8 +1,12 @@
 # LLM prompts and tool schemas (SOURCE OF TRUTH for the three Claude calls)
 
-All three calls use the Anthropic Messages API with a **forced tool call** (`tool_choice: { type: "tool", name: ... }`) so the output is
-structured. Validate every tool input with zod before using it. Models come from env: `ANTHROPIC_MODEL_PLANNER` (planner) and
-`ANTHROPIC_MODEL_FAST` (suggestions and narrator). Temperature 0 for the planner, 0.3 for the narrator and suggestions.
+All three calls ask for a single tool call so the output is structured (Anthropic Messages API, or OpenRouter's OpenAI-compatible API,
+per `LLM_PROVIDER`). Where the model supports it, the call is **forced** (`tool_choice: { type: "tool", name: ... }`; OpenRouter:
+`{ type: "function", function: { name } }`). For models that reject forced tool choice (Claude Sonnet 5.5, Opus 5.5, Fable 5.1), send the
+single tool with `tool_choice: "auto"` and append "Always answer by calling the <tool> tool." to the system prompt; a reply without the
+tool call is a failure (one retry, then 502 `llm_failed`). Validate every tool input with zod before using it, in both cases.
+Models come from env: `ANTHROPIC_MODEL_PLANNER` (planner) and `ANTHROPIC_MODEL_FAST` (suggestions and narrator).
+Temperature: leave the model default; set one only where the model supports it (never for Claude Sonnet 5.5 or Haiku 5.5, which reject it).
 Do not use the Batch API, Files API or code-execution tool. Put prompts in `server/src/llm/prompts/` as exported constants; fill the
 `{{...}}` placeholders in the user messages in code.
 

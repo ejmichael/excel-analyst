@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { bearer, createTestUser, deleteTestUsers, listOwnerObjects, setPlan, type TestUser } from './helpers.js';
+import { bearer, createTestUser, deleteTestUsers, listOwnerObjects, setPlan, step, type TestUser } from './helpers.js';
 import { createApp } from '../../src/app.js';
 import { objectExists } from '../../src/lib/storage.js';
 import { supabaseAdmin } from '../../src/lib/supabase.js';
@@ -42,10 +42,12 @@ let d: TestUser; // practice_plus: hard ceiling
 let aWorkspace: string;
 const datasetIds: Record<string, string> = {};
 
-async function consent(u: TestUser): Promise<string> {
-  await request(app).patch(api('/me')).set(bearer(u)).send({ accept_terms: true }).expect(200);
-  const res = await request(app).get(api('/workspaces')).set(bearer(u)).expect(200);
-  return (res.body.data as Workspace[])[0]!.id;
+function consent(u: TestUser): Promise<string> {
+  return step('accept terms and read the default workspace', async () => {
+    await request(app).patch(api('/me')).set(bearer(u)).send({ accept_terms: true }).expect(200);
+    const res = await request(app).get(api('/workspaces')).set(bearer(u)).expect(200);
+    return (res.body.data as Workspace[])[0]!.id;
+  });
 }
 
 function upload(u: TestUser, workspaceId: string, buffer: Buffer, filename: string, name?: string) {

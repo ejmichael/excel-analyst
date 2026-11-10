@@ -34,6 +34,8 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, next) 
   if (appError) {
     const body: ApiError = { error: { code: appError.code, message: appError.message } };
     if (appError.details !== undefined) body.error.details = appError.details;
+    // The contract promises Retry-After on every 429; the rate limiters set their own, other 429s get a default.
+    if (appError.code === 'rate_limited' && !res.getHeader('Retry-After')) res.setHeader('Retry-After', '5');
     res.status(appError.status).json(body);
     return;
   }

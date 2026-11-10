@@ -6,7 +6,6 @@ import {
   SUGGEST_QUESTIONS_TOOL,
   SUGGESTIONS_MAX_TOKENS,
   SUGGESTIONS_SYSTEM,
-  SUGGESTIONS_TEMPERATURE,
   suggestQuestionsSchema,
 } from '../../src/llm/prompts/suggestions.js';
 import { profileFile } from '../../src/services/parsing/pipeline.js';
@@ -38,7 +37,6 @@ describe.skipIf(!process.env.RUN_LLM_TESTS)('suggestions with the real model', (
       tool: SUGGEST_QUESTIONS_TOOL,
       schema: suggestQuestionsSchema,
       maxTokens: SUGGESTIONS_MAX_TOKENS,
-      temperature: SUGGESTIONS_TEMPERATURE,
     });
     const { usage } = result;
     console.log(

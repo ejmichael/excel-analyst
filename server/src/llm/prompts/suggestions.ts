@@ -40,4 +40,3 @@ export const suggestQuestionsSchema = z.object({
 });
 
 export const SUGGESTIONS_MAX_TOKENS = 600;
-export const SUGGESTIONS_TEMPERATURE = 0.3;

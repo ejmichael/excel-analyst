@@ -4,7 +4,6 @@ import {
   SUGGEST_QUESTIONS_TOOL,
   SUGGESTIONS_MAX_TOKENS,
   SUGGESTIONS_SYSTEM,
-  SUGGESTIONS_TEMPERATURE,
   suggestQuestionsSchema,
 } from '../llm/prompts/suggestions.js';
 import type { ColumnDataType, ColumnSemantic, SuggestedQuestion } from '../types/api.js';
@@ -94,7 +93,6 @@ export async function generateSuggestions(
       tool: SUGGEST_QUESTIONS_TOOL,
       schema: suggestQuestionsSchema,
       maxTokens: SUGGESTIONS_MAX_TOKENS,
-      temperature: SUGGESTIONS_TEMPERATURE,
     });
     await recordLlmUsage(ownerId, 'suggest', result.usage, { dataset_id: datasetId, ms: Date.now() - started });
     return result.output.questions;

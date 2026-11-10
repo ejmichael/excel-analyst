@@ -28,7 +28,7 @@ Entry format:
   - Storage: either make `report_runs.template_id` nullable and add a `kind` column, or add an `auto_report_runs` table. Server decides in a migration and notes it in STATUS.md.
 - Risks to test: suggested questions may be dull or redundant for some files (offer "add your own question" prominently); a draft report must never present a flagged block as clean.
 - Affects: endpoints above, `api-types.ts` (`AutoReportRun`), `API_CONTRACT.md` (new rows under Questions and blocks, Flow F), slice S3 (needs reports) and a "Build my report" button in the client dataset overview.
-- Status: PROPOSED
+- Status: APPROVED (2026-11-10). Not applied yet: API_CONTRACT.md and api-types.ts are updated at the start of the part that builds it
 
 ## 2026-11-09: Specify the `validation_failed` details shape (from: client)
 - What: the contract says only "zod errors in `details`" for 422 `validation_failed`, and `api-types.ts` has no type for it. The server already sends `details: { fields: Array<{ location: 'body' | 'query' | 'params', path: string, message: string }> }` (documented in STATUS.md server notes, 2026-11-09).
@@ -45,7 +45,7 @@ Entry format:
 - Proposed shape (pick one for the planner): (a) keep the forced tool call and use a planner model that supports it; (b) for models that reject forced tool choice, send the single tool with `tool_choice: "auto"` and a system line "Always answer by calling the <tool> tool", treat a reply without the tool call as a failure (one retry, then 502 `llm_failed`). Tested: Sonnet 5.5 called the tool; (c) use structured output (`response_format` json_schema, strict) with the same schema. Tested: valid JSON from Sonnet 5.5. In all cases the output is still validated with zod.
 - Also: `LLM_PROMPTS.md` sets temperature 0.3 (narrator, suggestions) and 0 (planner). Claude Sonnet 5.5 and Haiku 5.5 return a 400 for any non-default temperature on the Anthropic API, and OpenRouter silently drops it for them (its model list does not include `temperature` for either). Until this is decided, the server sends `temperature` only through OpenRouter (where it is ignored for these models) and never through the Anthropic provider. Proposed: drop the temperature values from `LLM_PROMPTS.md`, or keep them as "where the model supports it".
 - Affects: `LLM_PROMPTS.md` (header paragraph), `server/src/llm/client.ts`, slice S2 (planner). Not S1 if the fast model supports forced tools.
-- Status: PROPOSED
+- Status: APPLIED (approved by the user 2026-11-10: option (b) for models that reject forced tool choice; forced kept for Haiku 5.5; temperature values removed from LLM_PROMPTS.md, never sent to Sonnet 5.5 or Haiku 5.5)
 
 ## 2026-11-10: Structured details for a dataset that failed on a plan limit (from: client)
 - What: Flow A says a file over `max_rows` ends `failed` with `error_message` "Your plan allows N rows; this file has M." and no 402. The client has to parse that sentence to offer the upgrade dialog, and it cannot know `upgrade_to` (only the server knows the plan table), so the dialog names no plan.
