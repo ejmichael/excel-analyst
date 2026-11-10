@@ -33,7 +33,8 @@ describe('checkFile', () => {
     expect(result).toEqual({
       ok: false,
       reason: 'size',
-      limit: { limit_key: 'max_file_mb', limit: 5, used: 5.1 },
+      // Megabytes rounded up to 2 decimals, the same number the server reports.
+      limit: { limit_key: 'max_file_mb', limit: 5, used: 5.01 },
     });
   });
 });

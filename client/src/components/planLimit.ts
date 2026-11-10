@@ -38,8 +38,9 @@ export function describePlanLimit(details: Omit<PlanLimitDetails, 'upgrade_to'>,
     return `${planName} allows files of up to ${plural(limit, 'row', 'rows')}. This file has ${formatNumber(used, 0)}.`;
   }
   if (key === 'max_file_mb') {
-    const size = used > 0 ? ` This file is ${formatNumber(used, 1)} MB.` : '';
-    return `${planName} allows files of up to ${formatNumber(limit)} MB.${size}`;
+    // Both are megabytes rounded up to 2 decimals by the server.
+    const size = used > 0 ? ` This file is ${formatNumber(used, 2)} MB.` : '';
+    return `${planName} allows files of up to ${formatNumber(limit, 2)} MB.${size}`;
   }
   return `You have reached a limit of your ${PLAN_LABELS[plan]} plan.`;
 }

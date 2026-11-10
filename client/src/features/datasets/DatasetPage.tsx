@@ -6,7 +6,7 @@ import type { DatasetDetail } from '@/api/types';
 import { useMe } from '@/auth/useMe';
 import { FormMessage } from '@/components/FormField';
 import { InlineLoading } from '@/components/PageStatus';
-import { UpgradeDialog, type LocalPlanLimit } from '@/components/UpgradeDialog';
+import { UpgradeDialog } from '@/components/UpgradeDialog';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatNumber } from '@/lib/format';
 import { ColumnsForm } from './ColumnsForm';
@@ -15,14 +15,6 @@ import { ParseDialog } from './ParseDialog';
 import { PreviewTable } from './PreviewTable';
 import { ProfilingState } from './ProfilingState';
 import { useDatasetPolling, useDatasetPreview, useReparseDataset, useUpdateDataset } from './queries';
-
-/** Flow A step 5: a row-limit failure ends as `failed` with "Your plan allows N rows; this file has M." */
-export function rowLimitFrom(message: string | null): LocalPlanLimit | null {
-  const match = message && /plan allows ([\d\s,.  ]+) rows?; this file has ([\d\s,.  ]+)/i.exec(message);
-  if (!match) return null;
-  const digits = (s: string | undefined) => Number((s ?? '').replace(/\D/g, ''));
-  return { limit_key: 'max_rows', limit: digits(match[1]), used: digits(match[2]) };
-}
 
 function BackLink() {
   return (
@@ -102,7 +94,8 @@ function DatasetView({ dataset, slow }: { dataset: DatasetDetail; slow: boolean 
 function FailedPanel({ dataset, onTryOptions }: { dataset: DatasetDetail; onTryOptions: () => void }) {
   const me = useMe();
   const [showLimit, setShowLimit] = useState(false);
-  const rowLimit = rowLimitFrom(dataset.error_message);
+  // Flow A step 5: a plan-limit failure (max_rows) carries structured details, including the plan that allows it.
+  const rowLimit = dataset.error_details;
   return (
     <div role="alert" className="rounded-xl border border-destructive/40 bg-card p-6">
       <div className="flex items-start gap-3">
@@ -208,7 +201,7 @@ function ReadyView({ dataset, onCheckReading }: { dataset: DatasetDetail; onChec
             </Button>
           </div>
         ) : (
-          <PreviewTable preview={preview.data} />
+          <PreviewTable preview={preview.data} columns={dataset.columns} />
         )}
       </section>
     </div>

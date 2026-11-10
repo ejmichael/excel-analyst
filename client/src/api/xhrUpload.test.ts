@@ -32,6 +32,11 @@ class FakeXhr {
   setRequestHeader(name: string, value: string) {
     this.headers[name] = value;
   }
+  getAllResponseHeaders() {
+    return Object.entries(this.responseHeaders)
+      .map(([k, v]) => `${k.toLowerCase()}: ${v}\r\n`)
+      .join('');
+  }
   getResponseHeader(name: string) {
     return this.responseHeaders[name] ?? null;
   }
@@ -144,10 +149,13 @@ describe('apiUpload error mapping', () => {
     expect(uploadErrorMessage(error)).toMatch(/larger than the 50 MB/);
   });
 
-  it('maps 415 to file_unsupported with a readable message', async () => {
-    const error = await uploadAnswering(415, { error: { code: 'file_unsupported', message: 'x' } });
+  it('maps 415 to file_unsupported and shows the server message as written', async () => {
+    const message = 'This is an old Excel .xls file. Save it as .xlsx or CSV and upload it again.';
+    const error = await uploadAnswering(415, { error: { code: 'file_unsupported', message } });
     expect(error.code).toBe('file_unsupported');
-    expect(uploadErrorMessage(error)).toMatch(/could not read this as a CSV or Excel/);
+    expect(uploadErrorMessage(error)).toBe(message);
+    const bare = await uploadAnswering(415, { error: { code: 'file_unsupported', message: '' } });
+    expect(uploadErrorMessage(bare)).toMatch(/could not read this as a CSV or Excel/);
   });
 
   it('maps 429 to rate_limited and reads Retry-After', async () => {

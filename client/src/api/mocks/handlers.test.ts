@@ -167,10 +167,49 @@ describe('mock datasets behave like the contract', () => {
     expect(updated.columns.find((c) => c.id === province.id)?.is_pii).toBe(false);
   });
 
-  it('reparse goes back to profiling; preview needs ready (409) and expired is 410', async () => {
+  it('while profiling: preview is 409 dataset_not_ready and reparse is 409 conflict (like the server)', async () => {
     const created = await upload(csv('04_ambiguous_dates.csv'));
     expect((await caught(getDatasetPreview(created.id, 50)))?.code).toBe('dataset_not_ready');
-    expect((await caught(reparseDataset(created.id, { date_format: 'mdy' })))?.code).toBe('dataset_not_ready');
+    expect((await caught(reparseDataset(created.id, { date_format: 'mdy' })))?.code).toBe('conflict');
+  });
+
+  it('reparse re-detects what is not sent, keeps column edits by sql_name with new ids, and clears error_details', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const created = await upload(csv('04_ambiguous_dates.csv'));
+      vi.setSystemTime(Date.now() + MOCK_PROFILING_MS + 1);
+      const before = await getDataset(created.id);
+      const item = before.columns.find((c) => c.sql_name === 'item')!;
+      await updateDataset(created.id, { columns: [{ id: item.id, display_name: 'What' }] });
+
+      await reparseDataset(created.id, { date_format: 'mdy' });
+      vi.setSystemTime(Date.now() + MOCK_PROFILING_MS + 1);
+      const after = await getDataset(created.id);
+      const itemAfter = after.columns.find((c) => c.sql_name === 'item')!;
+      expect(itemAfter.display_name).toBe('What');
+      expect(itemAfter.id).not.toBe(item.id);
+      expect(after.warnings).toEqual([]);
+      expect(after.error_details).toBeNull();
+
+      // A later re-read that does not send the date order goes back to the detected one, with its warning.
+      await reparseDataset(created.id, { header_row: 1 });
+      vi.setSystemTime(Date.now() + MOCK_PROFILING_MS + 1);
+      const again = await getDataset(created.id);
+      expect(again.parse_options.date_format).toBe('dmy');
+      expect(again.warnings).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('masks Private columns with placeholders and shows real samples once Private is off', async () => {
+    const created = await upload(csv('02_webstore_orders_utf8bom.csv'));
+    const { columns } = await getDataset(created.id);
+    const email = columns.find((c) => c.name === 'Customer email')!;
+    expect(email.sample_values.every((v) => v === '[email]')).toBe(true);
+    expect(email.min_value).toBeNull();
+    const updated = await updateDataset(created.id, { columns: [{ id: email.id, is_pii: false }] });
+    expect(updated.columns.find((c) => c.id === email.id)?.sample_values[0]).toContain('@example.com');
   });
 
   it('lists newest first per workspace and deletes', async () => {

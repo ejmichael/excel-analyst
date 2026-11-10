@@ -22,7 +22,11 @@ export function uploadErrorMessage(error: unknown): string {
     case 'file_too_large':
       return 'This file is larger than the 50 MB any plan accepts. Split it into smaller files, or remove columns you do not need.';
     case 'file_unsupported':
-      return 'We could not read this as a CSV or Excel (.xlsx) file. Export it again from your system as CSV or .xlsx and try again.';
+      // The server says exactly what is wrong (old .xls, UTF-16 CSV, not a workbook, no columns): show it as written.
+      return (
+        error.serverMessage ??
+        'We could not read this as a CSV or Excel (.xlsx) file. Export it again from your system as CSV or .xlsx and try again.'
+      );
     case 'rate_limited':
       return error.retryAfterSeconds
         ? `Too many uploads in a short time. Wait ${error.retryAfterSeconds} seconds and try again.`

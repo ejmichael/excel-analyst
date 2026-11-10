@@ -20,7 +20,10 @@ export function xhrUpload(url: string, { form, headers, onProgress, signal }: Up
     });
     xhr.addEventListener('load', () => {
       const responseHeaders = new Headers();
-      const retryAfter = xhr.getResponseHeader('Retry-After');
+      // Cross-origin, the browser only exposes headers the server lists in Access-Control-Expose-Headers, and
+      // asking for any other one logs an error. So read Retry-After only when it is actually visible.
+      const visible = xhr.getAllResponseHeaders().toLowerCase();
+      const retryAfter = /(^|\n)retry-after:/.test(visible) ? xhr.getResponseHeader('Retry-After') : null;
       if (retryAfter) responseHeaders.set('Retry-After', retryAfter);
       // A Response cannot carry status 0; a real HTTP status is always 100-599 here.
       resolve(new Response(xhr.responseText || null, { status: xhr.status, headers: responseHeaders }));

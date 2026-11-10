@@ -1,11 +1,13 @@
-import type { DatasetPreview } from '@/api/types';
+import type { DatasetColumn, DatasetPreview } from '@/api/types';
 import { formatCell, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const NUMERIC = new Set(['integer', 'decimal']);
 
 /** The first rows of the cleaned file. Scrolls sideways inside its own box; the header stays put. */
-export function PreviewTable({ preview }: { preview: DatasetPreview }) {
+export function PreviewTable({ preview, columns = [] }: { preview: DatasetPreview; columns?: DatasetColumn[] }) {
+  // The preview has no meanings; money columns are known from the dataset columns, by sql_name.
+  const money = new Set(columns.filter((c) => c.semantic === 'currency_zar').map((c) => c.sql_name));
   const shown = preview.rows.length;
   const caption =
     shown >= preview.total_rows
@@ -46,7 +48,7 @@ export function PreviewTable({ preview }: { preview: DatasetPreview }) {
                     key={c.sql_name}
                     className={cn('px-3 py-2 whitespace-nowrap', NUMERIC.has(c.data_type) && 'text-right')}
                   >
-                    {formatCell(row[c.sql_name] ?? null, c.data_type)}
+                    {formatCell(row[c.sql_name] ?? null, c.data_type, { money: money.has(c.sql_name) })}
                   </td>
                 ))}
               </tr>

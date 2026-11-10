@@ -35,6 +35,11 @@ export interface ApiError {
   error: { code: ErrorCode; message: string; details?: unknown };
 }
 
+/** details of a 422 validation_failed (absent for malformed JSON or bodies over 100 KB). */
+export interface ValidationFailedDetails {
+  fields: Array<{ location: 'body' | 'query' | 'params'; path: string; message: string }>;
+}
+
 export interface Paged<T> {
   items: T[];
   total: number;
@@ -231,6 +236,7 @@ export interface Dataset {
   row_count: number | null;
   status: DatasetStatus;
   error_message: string | null;
+  error_details: PlanLimitDetails | null; // set only when profiling failed on a plan limit (max_rows); else null
   warnings: string[];
   expires_at: ISODateTime | null;
   created_at: ISODateTime;
@@ -245,13 +251,13 @@ export interface DatasetDetail extends Dataset {
   suggestions: SuggestedQuestion[];
 }
 
-/** POST /datasets is multipart/form-data: file (required), workspace_id (required), name (optional). */
+/** POST /datasets is multipart/form-data: file (required), workspace_id (required), name (optional, trimmed, 1 to 200). */
 
 export interface UpdateDatasetRequest {
-  name?: string;
+  name?: string; // trimmed, 1 to 200 characters
   columns?: Array<{
     id: ID;
-    display_name?: string | null;
+    display_name?: string | null; // trimmed, 1 to 120 characters, or null to clear
     semantic?: ColumnSemantic;
     is_pii?: boolean;
     vat_included?: boolean | null;

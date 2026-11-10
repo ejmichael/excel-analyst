@@ -17,6 +17,8 @@ import {
   BANK,
   applyDateOrder,
   buildColumns,
+  maskColumn,
+  rawSamplesFor,
   type DatasetTemplate,
 } from './datasetFixtures';
 
@@ -27,8 +29,7 @@ export interface MockDataset {
   profiling_until: number | null;
   final_status: 'ready' | 'failed';
   final_error: string | null;
-  /** Set when the mock rewrote the date order (fixture 04). */
-  date_order_chosen: boolean;
+  final_error_details: PlanLimitDetails | null;
 }
 
 /** How long a mock upload or reparse stays in 'profiling'. */
@@ -69,6 +70,7 @@ function fromTemplate(template: DatasetTemplate, workspaceId: string, createdAt:
     row_count: template.row_count,
     status: 'ready',
     error_message: null,
+    error_details: null,
     warnings: [...template.warnings],
     expires_at: null,
     created_at: createdAt,
@@ -92,6 +94,7 @@ function settle(ds: MockDataset, user: MockUser): void {
   ds.profiling_until = null;
   d.status = ds.final_status;
   d.error_message = ds.final_error;
+  d.error_details = ds.final_error_details;
   if (ds.final_status === 'ready') {
     d.expires_at = sastTimestamp(new Date(Date.now() + MOCK_PLAN_LIMITS[user.plan].retention_days * 86_400_000));
     d.suggestions = [...(templateFor(ds.template_key)?.suggestions ?? [])];
@@ -112,7 +115,7 @@ export function seedDemoDatasets(user: MockUser): void {
   const make = (template: DatasetTemplate, createdAt: string): MockDataset => {
     const detail = fromTemplate(template, ws.id, createdAt);
     detail.expires_at = addDays(createdAt, retention);
-    return { detail, template_key: template.key, profiling_until: null, final_status: 'ready', final_error: null, date_order_chosen: false };
+    return { detail, template_key: template.key, profiling_until: null, final_status: 'ready', final_error: null, final_error_details: null };
   };
 
   const ambiguous = make(AMBIGUOUS, '2026-10-28T09:12:00+02:00');
@@ -125,13 +128,15 @@ export function seedDemoDatasets(user: MockUser): void {
     size_bytes: 4_380_000,
     row_count: null,
     status: 'failed',
-    error_message: 'Your plan allows 20000 rows; this file has 48210.',
+    error_message: 'Your plan allows 20 000 rows; this file has 48 210.',
+    error_details: { limit_key: 'max_rows', limit: 20_000, used: 48_210, upgrade_to: 'solo' },
     expires_at: null,
     columns: [],
     suggestions: [],
   } satisfies Partial<DatasetDetail>);
   failed.final_status = 'failed';
   failed.final_error = failed.detail.error_message;
+  failed.final_error_details = failed.detail.error_details;
 
   const expired = make(CARD_SALES, '2026-08-20T08:00:00+02:00');
   Object.assign(expired.detail, {
@@ -219,12 +224,13 @@ export async function handleUpload(user: MockUser, form: FormData): Promise<Resu
     return fail(413, 'file_too_large', `The file is larger than ${HARD_CEILING_MB} MB.`);
   }
   const limits = MOCK_PLAN_LIMITS[user.plan];
-  if (file.size > limits.max_file_mb * 1024 * 1024) {
+  const sizeMb = Math.ceil((file.size / (1024 * 1024)) * 100) / 100;
+  if (sizeMb > limits.max_file_mb) {
     const details: PlanLimitDetails = {
       limit_key: 'max_file_mb',
       limit: limits.max_file_mb,
-      used: Math.ceil(file.size / (1024 * 1024)),
-      upgrade_to: cheapestPlanAllowing((l) => l.max_file_mb * 1024 * 1024 >= file.size),
+      used: sizeMb,
+      upgrade_to: cheapestPlanAllowing((l) => sizeMb <= l.max_file_mb),
     };
     return fail(402, 'plan_limit', 'File too large for your plan.', details);
   }
@@ -271,7 +277,15 @@ export async function handleUpload(user: MockUser, form: FormData): Promise<Resu
       : rowLimitHit
         ? `Your plan allows ${limits.max_rows} rows; this file has ${detail.row_count}.`
         : null,
-    date_order_chosen: false,
+    final_error_details:
+      rowLimitHit && detail.row_count !== null
+        ? {
+            limit_key: 'max_rows',
+            limit: limits.max_rows,
+            used: detail.row_count,
+            upgrade_to: cheapestPlanAllowing((l) => l.max_rows >= (detail.row_count ?? 0)),
+          }
+        : null,
   };
   if (ds.final_status === 'failed') {
     detail.columns = [];
@@ -390,6 +404,8 @@ export function routeDatasets(method: string, url: URL, user: MockUser, body: un
         if (PII_SEMANTICS.has(edit.semantic) && edit.is_pii === undefined) column.is_pii = true;
       }
       if (edit.is_pii !== undefined) column.is_pii = edit.is_pii;
+      const raw = rawSamplesFor(templateFor(ds.template_key), column.name);
+      if (raw) maskColumn(column, raw);
       if (edit.vat_included !== undefined) column.vat_included = edit.vat_included;
     }
     return ok(d);
@@ -404,20 +420,29 @@ export function routeDatasets(method: string, url: URL, user: MockUser, body: un
 
   if (sub === '/reparse' && method === 'POST') {
     if (d.status === 'expired') return fail(410, 'dataset_expired', 'The source file was removed.');
-    if (d.status === 'profiling') return fail(409, 'dataset_not_ready', 'The dataset is still being read.');
+    // Like the server: a reparse while one is running is 409 conflict.
+    if (d.status === 'profiling') return fail(409, 'conflict', 'This file is already being read.');
     const parsed = reparseSchema.safeParse(body ?? {});
     if (!parsed.success) return validationFailed(parsed.error);
     const options: ParseOptions = parsed.data;
-    d.parse_options = { ...d.parse_options, ...options };
     const template = templateFor(ds.template_key);
-    if (template?.raw_dates && (options.date_format === 'dmy' || options.date_format === 'mdy')) {
-      applyDateOrder(d, template, options.date_format);
-      ds.date_order_chosen = true;
+    // Like the server: only the options sent override detection; everything else is detected again.
+    const detected = template?.parse_options ?? d.parse_options;
+    d.parse_options = {
+      ...detected,
+      ...Object.fromEntries(Object.entries(options).filter(([, v]) => v !== null && v !== undefined)),
+    };
+    // New column ids, with edits carried over by sql_name.
+    d.columns = d.columns.map((c) => ({ ...c, id: crypto.randomUUID() }));
+    if (template?.raw_dates) {
+      const order = d.parse_options.date_format === 'mdy' ? 'mdy' : 'dmy';
+      applyDateOrder(d, template, order);
+      // The ambiguity warning stays unless the date order was sent.
+      d.warnings = options.date_format ? [] : [AMBIGUOUS_DATES_WARNING];
     }
-    // Column edits stay on columns that still exist; the ambiguity warning goes once the order is chosen.
-    d.warnings = d.warnings.filter((w) => !(ds.date_order_chosen && w === AMBIGUOUS_DATES_WARNING));
     d.status = 'profiling';
     d.error_message = null;
+    d.error_details = null;
     d.suggestions = [];
     ds.profiling_until = Date.now() + MOCK_PROFILING_MS;
     return ok(summary(d), 202);

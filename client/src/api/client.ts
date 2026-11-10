@@ -47,7 +47,9 @@ interface ClientConfig {
   onConsentRequired: () => void;
 }
 
-const config: ClientConfig = {
+// Kept across Vite hot reloads in development: a fresh config would have no token getter, so the next request
+// would be sent unsigned, get a 401 and sign you out.
+const config: ClientConfig = (import.meta.hot?.data.apiConfig as ClientConfig | undefined) ?? {
   transport: (url, init) => fetch(url, init),
   uploadTransport: (url, request) => xhrUpload(url, request),
   getAccessToken: async () => null,
@@ -55,6 +57,7 @@ const config: ClientConfig = {
   onUnauthorized: () => {},
   onConsentRequired: () => {},
 };
+if (import.meta.hot) import.meta.hot.data.apiConfig = config;
 
 export function configureApiClient(patch: Partial<ClientConfig>): void {
   Object.assign(config, patch);

@@ -4,6 +4,11 @@ import type { LocalPlanLimit } from '@/components/UpgradeDialog';
 export const ACCEPTED_EXTENSIONS = ['.csv', '.txt', '.xlsx'] as const;
 export const ACCEPT_ATTRIBUTE = ACCEPTED_EXTENSIONS.join(',');
 
+/** Size in MB (1024 × 1024 bytes), rounded up to 2 decimals: the same number the server checks and reports. */
+export function fileSizeMb(bytes: number): number {
+  return Math.ceil((bytes / (1024 * 1024)) * 100) / 100;
+}
+
 export type FileCheck =
   | { ok: true }
   | { ok: false; reason: 'type'; message: string }
@@ -25,15 +30,15 @@ export function checkFile(file: File, limits: PlanLimits): FileCheck {
   if (file.size === 0) {
     return { ok: false, reason: 'type', message: `“${file.name}” is empty.` };
   }
-  if (file.size > limits.max_file_mb * 1024 * 1024) {
+  const sizeMb = fileSizeMb(file.size);
+  if (sizeMb > limits.max_file_mb) {
     return {
       ok: false,
       reason: 'size',
       limit: {
         limit_key: 'max_file_mb',
         limit: limits.max_file_mb,
-        // Rounded up so a 5.2 MB file never reads as "5 MB" against a 5 MB limit.
-        used: Math.ceil((file.size / (1024 * 1024)) * 10) / 10,
+        used: sizeMb,
       },
     };
   }

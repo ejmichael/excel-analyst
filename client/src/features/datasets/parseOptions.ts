@@ -26,12 +26,25 @@ export function fieldsFor(fileType: FileType): Array<keyof ParseFormValues> {
     : ['header_row', 'delimiter', 'decimal_separator', 'date_format'];
 }
 
-/** Only the options the user changed, typed for POST /datasets/:id/reparse. */
+/** Only the options the user changed, typed for the API. Decides whether there is anything to send. */
 export function changedOptions(fileType: FileType, initial: ParseFormValues, current: ParseFormValues): ReparseRequest {
+  return toRequest(fileType, current, (field) => current[field] !== initial[field]);
+}
+
+/**
+ * The body for POST /datasets/:id/reparse: every option that applies to this file type, with the user's
+ * changes. The server re-detects any option it is not sent, so sending only the changes would silently undo an
+ * earlier choice (for example month-first dates) on the next re-read.
+ */
+export function reparseBody(fileType: FileType, current: ParseFormValues): ReparseRequest {
+  return toRequest(fileType, current, () => true);
+}
+
+function toRequest(fileType: FileType, current: ParseFormValues, include: (f: keyof ParseFormValues) => boolean): ReparseRequest {
   const out: ReparseRequest = {};
   for (const field of fieldsFor(fileType)) {
     const value = current[field];
-    if (value === initial[field] || value === '') continue;
+    if (!include(field) || value === '') continue;
     switch (field) {
       case 'header_row':
         out.header_row = Number(value);

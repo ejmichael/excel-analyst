@@ -35,10 +35,17 @@ export function formatBytes(bytes: number): string {
   return new Intl.NumberFormat(LOCALE, { style: 'unit', unit, maximumFractionDigits: 1 }).format(value);
 }
 
-/** A cell from a result or preview: numbers keep every decimal the API sent, with en-ZA grouping. */
-export function formatCell(value: string | number | boolean | null, type?: string): string {
+/**
+ * A cell from a result or preview: numbers keep every decimal the API sent, with en-ZA grouping. Money
+ * (`money: true`) always shows 2 decimals, so R66.70 reads 66,70 and not 66,7.
+ */
+export function formatCell(value: string | number | boolean | null, type?: string, { money = false } = {}): string {
   if (value === null) return '';
-  if (typeof value === 'number') return formatNumber(value, 10);
+  if (typeof value === 'number') {
+    return money
+      ? new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 10 }).format(value)
+      : formatNumber(value, 10);
+  }
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (type === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return formatDate(value);
   if (type === 'datetime' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {

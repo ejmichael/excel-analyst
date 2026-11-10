@@ -13,9 +13,19 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatNumber } from '@/lib/format';
 import { selectClass } from './ColumnsForm';
 import { DATE_ORDER_LABELS, DECIMAL_LABELS, DELIMITER_LABELS, describeParseOptions } from './labels';
-import { changedOptions, fieldsFor, formValuesFrom, headerRowError, type ParseFormValues } from './parseOptions';
+import { changedOptions, fieldsFor, formValuesFrom, headerRowError, reparseBody, type ParseFormValues } from './parseOptions';
+
+/**
+ * Every line above the header row was skipped. `preamble_lines` holds the ones with text; the server leaves
+ * blank lines out, so the true count comes from `header_row` (1-based).
+ */
+export function skippedLines(dataset: Pick<DatasetDetail, 'parse_options' | 'preamble_lines'>) {
+  const total = Math.max(dataset.preamble_lines.length, (dataset.parse_options.header_row ?? 1) - 1);
+  return { total, blank: total - dataset.preamble_lines.length };
+}
 
 interface ParseDialogProps {
   dataset: DatasetDetail;
@@ -53,7 +63,7 @@ export function ParseDialog({ dataset, open, onClose, onSubmit }: ParseDialogPro
     setError(null);
     setFieldErrors({});
     try {
-      await onSubmit(changes);
+      await onSubmit(reparseBody(dataset.file_type, values));
       onClose();
     } catch (e) {
       const byField = isApiError(e) ? e.fieldErrors : {};
@@ -65,6 +75,7 @@ export function ParseDialog({ dataset, open, onClose, onSubmit }: ParseDialogPro
   };
 
   const detected = describeParseOptions(dataset.parse_options, dataset.file_type);
+  const skipped = skippedLines(dataset);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -93,15 +104,24 @@ export function ParseDialog({ dataset, open, onClose, onSubmit }: ParseDialogPro
             </div>
           )}
 
-          {dataset.preamble_lines.length > 0 && (
+          {skipped.total > 0 && (
             <div className="space-y-1 text-sm">
-              <p className="font-medium">These lines above your table were skipped</p>
+              <p className="font-medium">
+                {skipped.total === 1
+                  ? 'This line above your table was skipped'
+                  : `These ${formatNumber(skipped.total, 0)} lines above your table were skipped`}
+              </p>
               <ol className="space-y-0.5 rounded-lg border bg-background p-3 font-mono text-xs">
                 {dataset.preamble_lines.map((line, i) => (
                   <li key={i} className="break-all">
                     {line === '' ? <span className="text-muted-foreground">(empty line)</span> : line}
                   </li>
                 ))}
+                {skipped.blank > 0 && (
+                  <li className="font-sans text-muted-foreground">
+                    {skipped.blank === 1 ? 'and 1 empty line' : `and ${formatNumber(skipped.blank, 0)} empty lines`}
+                  </li>
+                )}
               </ol>
             </div>
           )}

@@ -61,3 +61,12 @@ Entry format:
 - Proposed shape: state the bounds in the Datasets table; add to the reparse row: "keeps `display_name`, `semantic`, `is_pii` and `vat_included` for columns whose `sql_name` is unchanged".
 - Affects: `PATCH /datasets/:id`, `POST /datasets`, `POST /datasets/:id/reparse`.
 - Status: APPLIED (approved by the user 2026-11-10; applied by the server chat)
+
+## 2026-11-10: Server behaviour found during client integration (S1) (from: client)
+- What:
+  1. **`Retry-After` is not readable by the client.** The contract says every 429 carries `Retry-After`, and the server sets it, but CORS (`cors({ origin: CLIENT_URL })` in `server/src/app.ts`) does not list it in `Access-Control-Expose-Headers`. The client (on another origin) therefore never sees it and shows its generic "wait a moment" message instead of the number of seconds.
+  2. **`preamble_lines` leaves out blank lines.** For `01_card_sales_semicolon_win1252.csv` the server returns 3 lines with `header_row: 5`, while `fixtures/expected.json` says `preamble_lines: 4` ("4 preamble lines (one blank)"). The contract field is "text found above the header row", so this may be intended; the client now shows the true count from `header_row` ("These 4 lines… and 1 empty line"), which is correct either way.
+- Why: (1) the contract's promise only works for same-origin clients; (2) the server and the shared fixture expectations disagree, so one of them should change.
+- Proposed shape: (1) server: `cors({ origin: CLIENT_URL, exposedHeaders: ['Retry-After'] })`. (2) Decide whether `preamble_lines` includes blank lines (as `''`) and align either the server or `fixtures/expected.json`.
+- Affects: every 429 response; `DatasetDetail.preamble_lines`.
+- Status: PROPOSED

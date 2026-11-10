@@ -43,7 +43,33 @@ export interface DatasetTemplate {
   raw_dates?: { column: string; values: string[] };
 }
 
-const MASK = '•••••';
+/** Like the server: Private columns come back with placeholder samples and no min or max. */
+const PLACEHOLDERS: Partial<Record<ColumnSemantic, string>> = {
+  email: '[email]',
+  phone: '[phone]',
+  sa_id_number: '[id]',
+  person_name: '[name]',
+  address: '[address]',
+};
+
+export function maskColumn(column: DatasetColumn, raw: { samples: string[]; min: string | null; max: string | null }): void {
+  if (column.is_pii) {
+    const placeholder = PLACEHOLDERS[column.semantic] ?? '[hidden]';
+    column.sample_values = raw.samples.map(() => placeholder);
+    column.min_value = null;
+    column.max_value = null;
+  } else {
+    column.sample_values = [...raw.samples];
+    column.min_value = raw.min;
+    column.max_value = raw.max;
+  }
+}
+
+/** The unmasked samples for a template column, so turning Private off can show them again. */
+export function rawSamplesFor(template: DatasetTemplate | undefined, name: string) {
+  const spec = template?.columns.find((c) => c.name === name);
+  return spec ? { samples: spec.samples, min: spec.min ?? null, max: spec.max ?? null } : null;
+}
 
 export function snakeCase(name: string): string {
   return (
@@ -57,7 +83,8 @@ export function snakeCase(name: string): string {
 }
 
 export function buildColumns(specs: ColumnSpec[]): DatasetColumn[] {
-  return specs.map((spec, position) => ({
+  return specs.map((spec, position) => {
+    const column: DatasetColumn = {
     id: crypto.randomUUID(),
     position,
     name: spec.name,
@@ -71,8 +98,11 @@ export function buildColumns(specs: ColumnSpec[]): DatasetColumn[] {
     distinct_count: spec.distinct,
     min_value: spec.min ?? null,
     max_value: spec.max ?? null,
-    sample_values: spec.pii ? spec.samples.map(() => MASK) : spec.samples,
-  }));
+    sample_values: [],
+    };
+    maskColumn(column, { samples: spec.samples, min: spec.min ?? null, max: spec.max ?? null });
+    return column;
+  });
 }
 
 export const CARD_SALES: DatasetTemplate = {
@@ -117,9 +147,9 @@ export const WEBSTORE: DatasetTemplate = {
   columns: [
     { name: 'Order ID', type: 'text', semantic: 'identifier', distinct: 180, samples: ['#1001', '#1002', '#1003'] },
     { name: 'Created at', type: 'datetime', distinct: 180, min: '2026-10-01T07:29:13', max: '2026-10-31T21:02:44', samples: ['2026-10-01T07:29:13', '2026-10-01T08:19:33', '2026-10-01T14:08:52'] },
-    { name: 'Customer name', type: 'text', semantic: 'person_name', pii: true, distinct: 162, samples: ['a', 'b', 'c'] },
-    { name: 'Customer email', type: 'text', semantic: 'email', pii: true, distinct: 180, samples: ['a', 'b', 'c'] },
-    { name: 'Phone', type: 'text', semantic: 'phone', pii: true, distinct: 179, samples: ['a', 'b', 'c'] },
+    { name: 'Customer name', type: 'text', semantic: 'person_name', pii: true, distinct: 162, samples: ['Naledi Proef', 'Willem Test', 'Kobus Proef'] },
+    { name: 'Customer email', type: 'text', semantic: 'email', pii: true, distinct: 180, samples: ['naledi.proef18@example.com', 'willem.test38@example.com', 'kobus.proef59@example.com'] },
+    { name: 'Phone', type: 'text', semantic: 'phone', pii: true, distinct: 179, samples: ['082 555 8076', '082 555 2771', '082 555 2508'] },
     { name: 'Product', type: 'text', semantic: 'category', distinct: 8, samples: ['Biltong 250g', 'Candle, soy', 'Hot sauce 150ml'] },
     { name: 'Quantity', type: 'integer', distinct: 4, min: '1', max: '4', samples: ['3', '3', '1'] },
     { name: 'Unit price', type: 'decimal', semantic: 'currency_zar', distinct: 8, min: '45.00', max: '149.00', samples: ['95.00', '149.00', '45.00'] },

@@ -10,7 +10,8 @@ const base = {
   file_type: 'csv',
   parse_options: { sheet_name: null, header_row: 5, delimiter: ';', decimal_separator: ',', date_format: 'dmy' },
   sheet_names: [],
-  preamble_lines: ['Sales report', ''],
+  // Like the server: blank lines above the header are not in preamble_lines.
+  preamble_lines: ['Sales report', 'Period: 01/10/2026 to 31/10/2026', 'Generated: 01/11/2026 06:00'],
 } as unknown as DatasetDetail;
 
 const xlsx = {
@@ -42,8 +43,9 @@ describe('ParseDialog', () => {
     render(<ParseDialog dataset={base} open onClose={vi.fn()} onSubmit={vi.fn()} />);
     expect(screen.getByLabelText('Columns are separated by')).toBeInTheDocument();
     expect(screen.queryByLabelText('Sheet')).not.toBeInTheDocument();
-    expect(screen.getByText('These lines above your table were skipped')).toBeInTheDocument();
-    expect(screen.getByText('(empty line)')).toBeInTheDocument();
+    // Header on row 5: all 4 lines above it were skipped, one of them empty.
+    expect(screen.getByText('These 4 lines above your table were skipped')).toBeInTheDocument();
+    expect(screen.getByText('and 1 empty line')).toBeInTheDocument();
     expect(screen.getByText('Dates are read day first, 31/10/2026.')).toBeInTheDocument();
   });
 
@@ -53,7 +55,7 @@ describe('ParseDialog', () => {
     expect(screen.queryByLabelText('Columns are separated by')).not.toBeInTheDocument();
   });
 
-  it('sends only the changed options, and is disabled until something changes', async () => {
+  it('is disabled until something changes, then sends every option with the change (the server re-detects the rest)', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn(async () => undefined);
     const onClose = vi.fn();
@@ -64,7 +66,7 @@ describe('ParseDialog', () => {
     await user.selectOptions(screen.getByLabelText('Date order'), 'mdy');
     await user.click(submit);
 
-    expect(onSubmit).toHaveBeenCalledWith({ date_format: 'mdy' });
+    expect(onSubmit).toHaveBeenCalledWith({ header_row: 5, delimiter: ';', decimal_separator: ',', date_format: 'mdy' });
     expect(onClose).toHaveBeenCalled();
   });
 

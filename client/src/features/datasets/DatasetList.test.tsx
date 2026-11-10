@@ -16,6 +16,7 @@ const dataset = (over: Partial<Dataset>): Dataset => ({
   row_count: 1240,
   status: 'ready',
   error_message: null,
+  error_details: null,
   warnings: [],
   expires_at: '2026-12-02T10:00:00+02:00',
   created_at: '2026-11-02T10:00:00+02:00',
