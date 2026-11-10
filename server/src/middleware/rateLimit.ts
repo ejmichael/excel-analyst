@@ -40,6 +40,16 @@ export const uploadRateLimit: RequestHandler = rateLimit({
   handler,
 });
 
+/** Questions: 20 per minute per user (on top of the general limit). */
+export const askRateLimit: RequestHandler = rateLimit({
+  windowMs: WINDOW_MS,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.auth ? `ask:${req.auth.userId}` : ipKey(req)),
+  handler,
+});
+
 /** After auth: 300 per minute per user. */
 export const userRateLimit: RequestHandler = rateLimit({
   windowMs: WINDOW_MS,
