@@ -6,7 +6,11 @@ import { MAX_COLUMNS, openWorkbook, readMerges, readSheetRows, XlsxError } from 
 
 /** A user-safe failure: the message is shown to the user as the dataset's error_message. */
 export class ParseFailure extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** Set when the failure is a plan limit; the job adds upgrade_to and stores it as error_details. */
+    readonly limit?: { limit_key: 'max_rows'; limit: number; used: number },
+  ) {
     super(message);
     this.name = 'ParseFailure';
   }
@@ -75,10 +79,13 @@ export function openCsv(buf: Buffer, delimiterOverride?: Delimiter | null): RowS
 const MERGE_ROW_LIMIT = 100;
 const MAX_XLSX_ROWS = 2_000_000;
 
-const XLSX_MESSAGES: Record<XlsxError['reason'], string> = {
+export const XLSX_MESSAGES: Record<XlsxError['reason'], string> = {
   damaged: 'We could not read this Excel file. It may be damaged; try saving it again or exporting it as CSV.',
   too_large: 'This workbook is too large to read once unzipped.',
+  too_many_parts: 'This workbook has too many internal parts to be a normal spreadsheet.',
   too_many_columns: `This workbook has more than ${MAX_COLUMNS} columns.`,
+  too_many_cells: 'This workbook has too many rows or cells to read.',
+  unsafe: 'This Excel file contains a document type declaration, which spreadsheets never need, so we did not read it. Save it again from Excel or export it as CSV.',
 };
 
 function xlsxFailure(err: unknown): never {

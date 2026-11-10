@@ -17,7 +17,7 @@ Every DELETE that succeeds returns `{ "data": { "deleted": true } }`.
 | 413 | `file_too_large` | above the hard 50 MB ceiling |
 | 415 | `file_unsupported` | not a real CSV or XLSX (checked by content) |
 | 402 | `plan_limit` | `details: PlanLimitDetails` |
-| 422 | `validation_failed` | zod errors in `details` |
+| 422 | `validation_failed` | `details: ValidationFailedDetails` (`{ fields: [{ location, path, message }] }`; absent for malformed JSON or bodies over 100 KB) |
 | 422 | `cannot_answer` | the question cannot be answered from this dataset; `message` says what is missing |
 | 422 | `schema_mismatch` | template run; `details: SchemaMismatchDetails` |
 | 429 | `rate_limited` | |
@@ -52,11 +52,11 @@ Every DELETE that succeeds returns `{ "data": { "deleted": true } }`.
 ### Datasets
 | Method and path | Request | Response | Notes |
 |---|---|---|---|
-| POST `/datasets` | multipart: `file`, `workspace_id`, `name?` | 201 `Dataset` (`status: 'profiling'`) | Flow A. Limits: `max_datasets_per_month`, `max_file_mb`. Profiling continues in the background |
+| POST `/datasets` | multipart: `file`, `workspace_id`, `name?` | 201 `Dataset` (`status: 'profiling'`) | Flow A. Limits: `max_datasets_per_month`, `max_file_mb`. `name` trimmed, 1 to 200 characters (422 otherwise). Profiling continues in the background |
 | GET `/datasets?workspace_id=&limit=&offset=` | | `Paged<Dataset>` | `workspace_id` required; newest first |
 | GET `/datasets/:id` | | `DatasetDetail` | Client polls this while `status === 'profiling'` (every 1.5 s, stop at `ready` or `failed`) |
-| PATCH `/datasets/:id` | `UpdateDatasetRequest` | `DatasetDetail` | Changing `semantic` to `email`, `phone`, `sa_id_number`, `person_name` or `address` sets `is_pii` true unless the request sets it |
-| POST `/datasets/:id/reparse` | `ReparseRequest` | 202 `Dataset` (`status: 'profiling'`) | Re-runs steps b to h of ARCHITECTURE 2 on the stored raw file with the given options; resets `suggestions`. Existing blocks are untouched |
+| PATCH `/datasets/:id` | `UpdateDatasetRequest` | `DatasetDetail` | `name` trimmed, 1 to 200 characters; `columns[].display_name` trimmed, 1 to 120, or null (422 otherwise). Changing `semantic` to `email`, `phone`, `sa_id_number`, `person_name` or `address` sets `is_pii` true unless the request sets it |
+| POST `/datasets/:id/reparse` | `ReparseRequest` | 202 `Dataset` (`status: 'profiling'`) | Re-runs steps b to h of ARCHITECTURE 2 on the stored raw file with the given options; resets `suggestions`. Keeps `display_name`, `semantic`, `is_pii` and `vat_included` for columns whose `sql_name` is unchanged. Existing blocks are untouched |
 | GET `/datasets/:id/preview?limit=50` | | `DatasetPreview` | `limit` max 200; reads the normalised file; needs `ready` |
 | DELETE `/datasets/:id` | | `Deleted` | Deletes both files; blocks keep results |
 
@@ -117,7 +117,7 @@ Every DELETE that succeeds returns `{ "data": { "deleted": true } }`.
 2. Server: validates type by content and size, checks limits and consent, stores the raw file, inserts the dataset (`profiling`), responds 201.
 3. Client polls `GET /datasets/:id` until `ready` or `failed`. While waiting, show the stages generically ("Reading your file", "Checking columns"). The API exposes no stage names.
 4. On `ready`: show `warnings`, the column table, `suggestions`, and a preview (`GET /datasets/:id/preview`). On `failed`: show `error_message` and offer "Try other options" (opens the parse dialog calling `/reparse`).
-5. If the plan's `max_rows` is exceeded, the dataset ends `failed` with `error_message` "Your plan allows N rows; this file has M." (no 402, because the row count is only known after parsing).
+5. If the plan's `max_rows` is exceeded, the dataset ends `failed` with `error_message` "Your plan allows N rows; this file has M." and `error_details: PlanLimitDetails` (`limit_key: 'max_rows'`, `limit` = N, `used` = M, `upgrade_to` = the cheapest plan that allows M rows). No 402, because the row count is only known after parsing. `error_details` is null in every other case.
 
 ### Flow B: ask a question
 1. `POST /datasets/:id/ask { question }` (or a suggestion; send `source: 'suggested'`).

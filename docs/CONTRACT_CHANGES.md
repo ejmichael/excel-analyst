@@ -37,7 +37,7 @@ Entry format:
   `export interface ValidationFailedDetails { fields: Array<{ location: 'body' | 'query' | 'params'; path: string; message: string }> }`
   and in `API_CONTRACT.md` change the 422 row to "`details: ValidationFailedDetails` (absent for malformed JSON or bodies over 100 KB)".
 - Affects: every endpoint that validates input; `api-types.ts`; client `lib/errors.ts` (`fieldErrorsFrom`). No behaviour change on either side.
-- Status: PROPOSED
+- Status: APPLIED (approved by the user 2026-11-10; applied by the server chat)
 
 ## 2026-11-09: Forced tool calls are not supported by Claude Sonnet 5.5 (from: server)
 - What: `LLM_PROMPTS.md` requires a forced tool call (`tool_choice` naming the tool) for all three calls. Tested on 2026-11-09 through OpenRouter, `anthropic/claude-sonnet-5.5` rejects it from every provider, including Anthropic directly: "tool_choice: type "tool" and "any" are not supported for this model." `anthropic/claude-haiku-5.5` accepts it.
@@ -53,11 +53,11 @@ Entry format:
 - Proposed shape: add `error_details: PlanLimitDetails | null` to `Dataset` (set only when profiling failed on a plan limit, else null). The client would use it instead of the message text.
 - Also unspecified: what `PlanLimitDetails.used` means for `max_file_mb` (megabytes, rounded how?). The client currently shows it with one decimal.
 - Affects: `api-types.ts` (`Dataset`), `GET /datasets`, `GET /datasets/:id`, client `DatasetPage` (`rowLimitFrom`).
-- Status: PROPOSED
+- Status: APPLIED (approved by the user 2026-11-10; applied by the server chat)
 
 ## 2026-11-10: Dataset name and column display-name lengths, and what a reparse keeps (from: client)
 - What: (1) The contract gives no bounds for `UpdateDatasetRequest.name`, `columns[].display_name` or the upload's `name` field. The client mock assumes name 1 to 200 characters and display name 1 to 120 (or null), and the inputs cap at those lengths. (2) The Part 2 brief says column edits (display name, meaning, Private, VAT) are kept after `POST /datasets/:id/reparse` "where the column still exists", but the contract only says reparse re-runs steps b to h. It does not say whether `dataset_columns` edits survive, or how a column is matched (by `sql_name`?).
 - Why: the server needs these to validate and to rebuild columns; the client tells users their edits are kept, which must be true.
 - Proposed shape: state the bounds in the Datasets table; add to the reparse row: "keeps `display_name`, `semantic`, `is_pii` and `vat_included` for columns whose `sql_name` is unchanged".
 - Affects: `PATCH /datasets/:id`, `POST /datasets`, `POST /datasets/:id/reparse`.
-- Status: PROPOSED
+- Status: APPLIED (approved by the user 2026-11-10; applied by the server chat)

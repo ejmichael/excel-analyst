@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { parse } from 'csv-parse/sync';
 import { describe, expect, it } from 'vitest';
 import { profileFile, type ProfileResult } from '../../src/services/parsing/pipeline.js';
+import { ParseFailure } from '../../src/services/parsing/sources.js';
 import { buildSuggestionsPrompt } from '../../src/services/suggestions.js';
 
 /**
@@ -148,6 +149,20 @@ describe('row limit', () => {
     await expect(
       profileFile({ buffer: file('03_bank_statement_comma_quoted.csv'), fileType: 'csv', options: {}, maxRows: 100 }),
     ).rejects.toThrow('Your plan allows 100 rows; this file has 150.');
+  });
+
+  it('carries the plan-limit details for error_details', async () => {
+    const err = await profileFile({ buffer: file('03_bank_statement_comma_quoted.csv'), fileType: 'csv', options: {}, maxRows: 100 }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(ParseFailure);
+    expect((err as ParseFailure).limit).toEqual({ limit_key: 'max_rows', limit: 100, used: 150 });
+  });
+
+  it('other failures carry no plan-limit details', async () => {
+    const err = await profileFile({ buffer: Buffer.from('a,b\n'), fileType: 'csv', options: {}, maxRows: 100 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ParseFailure);
+    expect((err as ParseFailure).limit).toBeUndefined();
   });
 
   it('groups large numbers with spaces', async () => {

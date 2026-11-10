@@ -2,7 +2,8 @@ import { throwIfDbError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 import { getObject, normalisedPath, putObject, removeObjects } from '../lib/storage.js';
 import { supabaseAdmin } from '../lib/supabase.js';
-import type { ParseOptions } from '../types/api.js';
+import type { ParseOptions, PlanLimitDetails } from '../types/api.js';
+import { cheapestPlanAllowing, supabaseLimitsDataSource } from './limits.js';
 import { type ColumnRow, COLUMN_COLUMNS, DATASET_COLUMNS, type DatasetRow, planFor } from './datasets.js';
 import { placeholderFor } from './parsing/pii.js';
 import { profileFile } from './parsing/pipeline.js';
@@ -70,22 +71,34 @@ async function runWithTimeout(job: ProfilingJob): Promise<void> {
     logger.info({ dataset_id: job.datasetId, outcome, ms: Date.now() - started }, 'profiling finished');
   } catch (err) {
     const message = err instanceof ParseFailure ? err.message : GENERIC_FAILURE;
+    const limit = err instanceof ParseFailure ? err.limit : undefined;
     if (!(err instanceof ParseFailure)) {
       logger.error({ dataset_id: job.datasetId, err_name: err instanceof Error ? err.name : typeof err }, 'profiling error');
     }
-    await markFailed(job, message).catch(() => logger.error({ dataset_id: job.datasetId }, 'could not mark dataset failed'));
+    await markFailed(job, message, limit).catch(() => logger.error({ dataset_id: job.datasetId }, 'could not mark dataset failed'));
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function markFailed(job: ProfilingJob, message: string): Promise<void> {
+/** PlanLimitDetails for a plan-limit failure: the server adds upgrade_to from the plan table. */
+async function limitDetails(ownerId: string, limit: NonNullable<ParseFailure['limit']>): Promise<PlanLimitDetails> {
+  const [plan, all] = await Promise.all([
+    supabaseLimitsDataSource.getPlan(ownerId),
+    supabaseLimitsDataSource.getAllPlanLimits(),
+  ]);
+  return { ...limit, upgrade_to: cheapestPlanAllowing(all, plan, (l) => limit.used <= l[limit.limit_key]) };
+}
+
+async function markFailed(job: ProfilingJob, message: string, limit?: ParseFailure['limit']): Promise<void> {
   const { retention_days } = await planFor(job.ownerId);
+  const errorDetails = limit ? await limitDetails(job.ownerId, limit) : null;
   const { error } = await supabaseAdmin()
     .from('datasets')
     .update({
       status: 'failed',
       error_message: message,
+      error_details: errorDetails,
       // Failed datasets expire too, so retention removes their raw file.
       expires_at: new Date(Date.now() + retention_days * 86_400_000).toISOString(),
     })
@@ -196,6 +209,7 @@ export async function runProfiling(job: ProfilingJob, signal: AbortSignal): Prom
     .update({
       status: 'ready',
       error_message: null,
+      error_details: null,
       row_count: result.rowCount,
       excluded_rows: result.excludedRows,
       warnings,
@@ -221,7 +235,7 @@ export async function runProfiling(job: ProfilingJob, signal: AbortSignal): Prom
 export async function sweepInterruptedProfiling(ownerId?: string): Promise<number> {
   let q = supabaseAdmin()
     .from('datasets')
-    .update({ status: 'failed', error_message: INTERRUPTED_MESSAGE })
+    .update({ status: 'failed', error_message: INTERRUPTED_MESSAGE, error_details: null })
     .eq('status', 'profiling');
   if (ownerId) q = q.eq('owner_id', ownerId);
   const { data, error } = await q.select('id');

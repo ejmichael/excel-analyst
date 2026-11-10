@@ -71,7 +71,7 @@ function receive(req: Request, res: Response): Promise<{ tooLarge: boolean }> {
 
 const uploadFields = z.strictObject({
   workspace_id: z.uuid(),
-  name: z.string().trim().min(1).max(120).optional(),
+  name: z.string().trim().min(1).max(200).optional(),
 });
 
 /** The original name with any path removed, trimmed, at most 200 characters. Never used in a storage path. */
@@ -82,7 +82,7 @@ function cleanFilename(original: string): string {
 
 function defaultName(filename: string): string {
   const withoutExt = filename.replace(/\.[^.]{1,10}$/, '').trim();
-  return (withoutExt || filename).slice(0, 120).trim() || 'Untitled dataset';
+  return (withoutExt || filename).slice(0, 200).trim() || 'Untitled dataset';
 }
 
 datasetsRouter.post('/datasets', uploadRateLimit, async (req, res) => {
@@ -197,7 +197,7 @@ datasetsRouter.get('/datasets/:id', requireUuidParam(), async (req, res) => {
 
 const patchBody = z
   .strictObject({
-    name: z.string().trim().min(1).max(120).optional(),
+    name: z.string().trim().min(1).max(200).optional(),
     columns: z
       .array(
         z.strictObject({
@@ -331,7 +331,7 @@ datasetsRouter.post('/datasets/:id/reparse', requireUuidParam(), validate({ body
 
   const { data: row, error } = await supabaseAdmin()
     .from('datasets')
-    .update({ status: 'profiling', error_message: null, suggestions: [] })
+    .update({ status: 'profiling', error_message: null, error_details: null, suggestions: [] })
     .eq('id', id)
     .eq('owner_id', userId)
     .in('status', ['ready', 'failed'])

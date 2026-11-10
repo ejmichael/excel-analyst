@@ -83,7 +83,7 @@ describe('upload and profile the fixtures', () => {
     const res = await upload(a, aWorkspace, fixture(name), name);
     expect(res.status).toBe(201);
     const ds = res.body.data as Dataset;
-    expect(ds).toMatchObject({ status: 'profiling', workspace_id: aWorkspace, original_filename: name, file_type: 'csv', row_count: null });
+    expect(ds).toMatchObject({ status: 'profiling', workspace_id: aWorkspace, original_filename: name, file_type: 'csv', row_count: null, error_details: null });
     expect(ds.name).toBe(name.replace(/\.csv$/, ''));
     datasetIds[name] = ds.id;
 
@@ -91,6 +91,7 @@ describe('upload and profile the fixtures', () => {
     const exp = expected[name]!;
     expect(detail.status).toBe('ready');
     expect(detail.error_message).toBeNull();
+    expect(detail.error_details).toBeNull();
     expect(detail.row_count).toBe(exp.data_rows);
     expect(detail.excluded_rows).toBe(exp.excluded_rows);
     expect(detail.parse_options.header_row).toBe(exp.header_line_1based);
@@ -191,6 +192,99 @@ describe('PATCH /datasets/:id', () => {
   });
 });
 
+describe('name and display_name bounds (approved 2026-11-10)', () => {
+  it('accepts a 200-character dataset name and rejects 201 or blank', async () => {
+    const id = datasetIds['02_webstore_orders_utf8bom.csv']!;
+    await waitFor(a, id);
+    const ok = await request(app).patch(api(`/datasets/${id}`)).set(bearer(a)).send({ name: `  ${'n'.repeat(200)}  ` });
+    expect(ok.status).toBe(200);
+    expect(ok.body.data.name).toBe('n'.repeat(200));
+    for (const name of ['n'.repeat(201), '   ']) {
+      const res = await request(app).patch(api(`/datasets/${id}`)).set(bearer(a)).send({ name });
+      expect(res.status).toBe(422);
+      expect(res.body.error.details.fields[0]).toMatchObject({ location: 'body', path: 'name' });
+    }
+    await request(app).patch(api(`/datasets/${id}`)).set(bearer(a)).send({ name: 'Webstore October' }).expect(200);
+  });
+
+  it('accepts a 120-character display_name, null to clear, and rejects 121 or blank', async () => {
+    const id = datasetIds['02_webstore_orders_utf8bom.csv']!;
+    const col = (await waitFor(a, id)).columns[0]!;
+    const set = (display_name: string | null) =>
+      request(app).patch(api(`/datasets/${id}`)).set(bearer(a)).send({ columns: [{ id: col.id, display_name }] });
+    expect((await set('d'.repeat(120))).status).toBe(200);
+    expect((await set(null)).body.data.columns[0].display_name).toBeNull();
+    for (const bad of ['d'.repeat(121), '  ']) {
+      const res = await set(bad);
+      expect(res.status).toBe(422);
+      expect(res.body.error.details.fields[0]).toMatchObject({ location: 'body', path: 'columns.0.display_name' });
+    }
+  });
+
+  it('applies the same name bounds on upload', async () => {
+    const ws = await consent(b);
+    const tooLong = await upload(b, ws, rows(3), 'x.csv', 'n'.repeat(201));
+    expect(tooLong.status).toBe(422);
+    expect(tooLong.body.error.details.fields[0]).toMatchObject({ location: 'body', path: 'name' });
+  });
+});
+
+describe('reparse keeps column edits (approved 2026-11-10)', () => {
+  it('keeps display_name, semantic, is_pii and vat_included for columns that still exist', async () => {
+    const res = await upload(a, aWorkspace, fixture('03_bank_statement_comma_quoted.csv'), 'bank.csv', 'Bank for reparse');
+    const id = res.body.data.id as string;
+    const before = await waitFor(a, id);
+    const desc = before.columns.find((x) => x.sql_name === 'description')!;
+    const amount = before.columns.find((x) => x.sql_name === 'amount')!;
+    expect(desc).toMatchObject({ semantic: 'category', is_pii: false, display_name: null, vat_included: null });
+    await request(app)
+      .patch(api(`/datasets/${id}`))
+      .set(bearer(a))
+      .send({
+        columns: [
+          { id: desc.id, display_name: 'Payee', semantic: 'free_text', is_pii: true },
+          { id: amount.id, display_name: 'Amount incl. VAT', vat_included: true },
+        ],
+      })
+      .expect(200);
+
+    // A different header row: the columns (and their sql_names) stay the same, so the edits must survive.
+    await request(app).post(api(`/datasets/${id}/reparse`)).set(bearer(a)).send({ header_row: 3, decimal_separator: '.' }).expect(202);
+    const after = await waitFor(a, id);
+    expect(after.status).toBe('ready');
+    expect(after.columns.find((x) => x.sql_name === 'description')).toMatchObject({
+      display_name: 'Payee',
+      semantic: 'free_text',
+      is_pii: true,
+      vat_included: null,
+    });
+    expect(after.columns.find((x) => x.sql_name === 'description')!.sample_values.every((v) => v.startsWith('['))).toBe(true);
+    expect(after.columns.find((x) => x.sql_name === 'amount')).toMatchObject({
+      display_name: 'Amount incl. VAT',
+      semantic: 'currency_zar',
+      is_pii: false,
+      vat_included: true,
+    });
+    // Column ids are new after a reparse; edits are matched by sql_name.
+    expect(after.columns.find((x) => x.sql_name === 'amount')!.id).not.toBe(amount.id);
+    await request(app).delete(api(`/datasets/${id}`)).set(bearer(a)).expect(200);
+  });
+
+  it('starts fresh for a column that no longer exists under the new options', async () => {
+    const res = await upload(a, aWorkspace, fixture('03_bank_statement_comma_quoted.csv'), 'bank2.csv', 'Bank, wrong header');
+    const id = res.body.data.id as string;
+    const before = await waitFor(a, id);
+    const desc = before.columns.find((x) => x.sql_name === 'description')!;
+    await request(app).patch(api(`/datasets/${id}`)).set(bearer(a)).send({ columns: [{ id: desc.id, display_name: 'Payee' }] }).expect(200);
+    // Header on row 4 (the first data row) gives different sql_names, so nothing matches.
+    await request(app).post(api(`/datasets/${id}/reparse`)).set(bearer(a)).send({ header_row: 4 }).expect(202);
+    const after = await waitFor(a, id);
+    expect(after.columns.some((x) => x.sql_name === 'description')).toBe(false);
+    expect(after.columns.every((x) => x.display_name === null)).toBe(true);
+    await request(app).delete(api(`/datasets/${id}`)).set(bearer(a)).expect(200);
+  });
+});
+
 describe('reparse', () => {
   it('re-reads month-first, keeps column edits by sql_name, and refuses while profiling', async () => {
     const id = datasetIds['04_ambiguous_dates.csv']!;
@@ -277,6 +371,8 @@ describe('upload checks', () => {
     const detail = await waitFor(c, res.body.data.id);
     expect(detail.status).toBe('failed');
     expect(detail.error_message).toBe('Your plan allows 20 000 rows; this file has 20 001.');
+    // Approved 2026-11-10: structured details so the client can open the upgrade dialog.
+    expect(detail.error_details).toEqual({ limit_key: 'max_rows', limit: 20_000, used: 20_001, upgrade_to: 'solo' });
   });
 
   it('rejects a missing file, a bad workspace id and someone else\'s workspace', async () => {

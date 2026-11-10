@@ -2,6 +2,8 @@ import { AppError } from '../../lib/errors.js';
 import type { FileType } from '../../types/api.js';
 import { detectDelimiter } from './delimiter.js';
 import { decodeHead, detectEncoding } from './encoding.js';
+import { XLSX_MESSAGES } from './sources.js';
+import { checkZipLimits, XlsxError } from './xlsx.js';
 import { isOleCompoundFile, isZip, listEntries } from './zip.js';
 
 /**
@@ -21,6 +23,12 @@ export function checkFileContent(buf: Buffer): { fileType: FileType; ext: 'csv' 
     const entries = listEntries(buf);
     if (!entries || !entries.some((e) => e.name === 'xl/workbook.xml')) {
       throw new AppError('file_unsupported', 'This is a zip file but not an Excel workbook. Upload a .xlsx or CSV file.');
+    }
+    // Zip-bomb checks from the directory alone, before anything is stored or inflated.
+    try {
+      checkZipLimits(entries);
+    } catch (err) {
+      throw new AppError('file_unsupported', err instanceof XlsxError ? XLSX_MESSAGES[err.reason] : XLSX_MESSAGES.damaged);
     }
     if (entries.some((e) => e.encrypted)) {
       throw new AppError('file_unsupported', 'This workbook is encrypted. Remove the password and upload it again.');

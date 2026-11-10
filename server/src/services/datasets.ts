@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { notFound, throwIfDbError } from '../lib/errors.js';
 import { supabaseAdmin } from '../lib/supabase.js';
-import type { ColumnDataType, ColumnSemantic, Dataset, DatasetColumn, DatasetDetail, ParseOptions, SuggestedQuestion } from '../types/api.js';
+import type { ColumnDataType, ColumnSemantic, Dataset, PlanLimitDetails, DatasetColumn, DatasetDetail, ParseOptions, SuggestedQuestion } from '../types/api.js';
 import { placeholderFor } from './parsing/pii.js';
 
 /** Database rows for datasets and dataset_columns, and their mapping to the contract's shapes. */
@@ -18,6 +18,7 @@ export interface DatasetRow {
   normalised_path: string | null;
   status: Dataset['status'];
   error_message: string | null;
+  error_details: PlanLimitDetails | null;
   row_count: number | null;
   excluded_rows: number;
   sheet_names: string[];
@@ -49,7 +50,7 @@ export interface ColumnRow {
 }
 
 export const DATASET_COLUMNS =
-  'id, owner_id, workspace_id, name, original_filename, file_type, size_bytes, storage_path, normalised_path, status, error_message, row_count, excluded_rows, sheet_names, parse_options, preamble_lines, warnings, suggestions, expires_at, created_at';
+  'id, owner_id, workspace_id, name, original_filename, file_type, size_bytes, storage_path, normalised_path, status, error_message, error_details, row_count, excluded_rows, sheet_names, parse_options, preamble_lines, warnings, suggestions, expires_at, created_at';
 
 export const COLUMN_COLUMNS =
   'id, dataset_id, owner_id, position, name, display_name, sql_name, data_type, semantic, is_pii, vat_included, null_count, distinct_count, min_value, max_value, sample_values';
@@ -65,6 +66,7 @@ export function toDataset(r: DatasetRow): Dataset {
     row_count: r.row_count,
     status: r.status,
     error_message: r.error_message,
+    error_details: r.error_details ?? null,
     warnings: r.warnings ?? [],
     expires_at: r.expires_at,
     created_at: r.created_at,

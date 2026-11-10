@@ -1,14 +1,12 @@
 import type { Request, RequestHandler } from 'express';
 import { z } from 'zod';
 import { AppError } from '../lib/errors.js';
+import type { ValidationFailedDetails } from '../types/api.js';
 
 type Location = 'body' | 'query' | 'params';
 
-export interface FieldError {
-  location: Location;
-  path: string;
-  message: string;
-}
+/** One entry of ValidationFailedDetails.fields (docs/api-types.ts). */
+export type FieldError = ValidationFailedDetails['fields'][number];
 
 interface Schemas {
   body?: z.ZodType;

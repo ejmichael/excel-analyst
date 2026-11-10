@@ -56,6 +56,7 @@ export interface ProfileInput {
 const ROW_COUNT_CAP = 1_000_000;
 const HEAD_ROWS = 60;
 const MAX_PREAMBLE = 10;
+const MAX_PENDING_TOTALS = 1000;
 
 /** 1234567 -> "1 234 567" (plain spaces, as in the user-facing messages). */
 export const groupDigits = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -124,7 +125,8 @@ export async function profileFile(input: ProfileInput): Promise<ProfileResult> {
       continue;
     }
     // Total rows only count as footers when nothing but totals and blanks follows them.
-    if (isTotalRow(row.cells)) {
+    // Bounded: past MAX_PENDING_TOTALS the "totals" are data, not a footer, so stop holding them back.
+    if (isTotalRow(row.cells) && pending.length < MAX_PENDING_TOTALS) {
       pending.push(row);
       continue;
     }
@@ -139,7 +141,11 @@ export async function profileFile(input: ProfileInput): Promise<ProfileResult> {
   const trailing = new Set(pending.map((r) => r.n));
   if (dataRows > input.maxRows) {
     const found = overCap ? `more than ${groupDigits(ROW_COUNT_CAP)}` : groupDigits(dataRows);
-    throw new ParseFailure(`Your plan allows ${groupDigits(input.maxRows)} rows; this file has ${found}.`);
+    throw new ParseFailure(`Your plan allows ${groupDigits(input.maxRows)} rows; this file has ${found}.`, {
+      limit_key: 'max_rows',
+      limit: input.maxRows,
+      used: dataRows, // past the counting cap this is 1 000 001
+    });
   }
   if (dataRows === 0) throw new ParseFailure('We found a header row but no data rows below it.');
   const excludedRows = blankRows + trailing.size;

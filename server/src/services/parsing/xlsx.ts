@@ -8,16 +8,46 @@ import { listEntries, readEntry, streamEntryText, type ZipEntry } from './zip.js
  * and turns date-formatted numbers into ISO strings.
  */
 
+export type XlsxErrorReason = 'damaged' | 'too_large' | 'too_many_parts' | 'too_many_columns' | 'too_many_cells' | 'unsafe';
+
 export class XlsxError extends Error {
-  constructor(readonly reason: 'damaged' | 'too_large' | 'too_many_columns') {
+  constructor(readonly reason: XlsxErrorReason) {
     super(`xlsx: ${reason}`);
     this.name = 'XlsxError';
   }
 }
 
-export const MAX_UNZIPPED_BYTES = 500 * 1024 * 1024;
-const MAX_SMALL_ENTRY = 100 * 1024 * 1024;
-export const MAX_COLUMNS = 500;
+const MB = 1024 * 1024;
+
+/**
+ * Hard limits for reading a workbook. Exceeding any of them is a clear, user-safe failure, never a crash.
+ * Sizes are bytes after decompression; "declared" sizes come from the zip directory and are checked up front,
+ * and actual inflated bytes are counted again while reading, so a zip that lies about its sizes is still stopped.
+ * Mutable only so tests can lower them; nothing else writes to it.
+ */
+export const XLSX_LIMITS = {
+  /** Zip entries in the file (a normal workbook has tens). */
+  maxEntries: 10_000,
+  /** Sum of all entries' declared uncompressed sizes. */
+  maxTotalUncompressed: 500 * MB,
+  /** One worksheet XML part, counted as it inflates. */
+  maxSheetXml: 500 * MB,
+  /** xl/sharedStrings.xml (held in memory as the string table). */
+  maxSharedStringsXml: 64 * MB,
+  /** Any other XML part we read: workbook.xml, its rels, styles.xml. */
+  maxOtherXml: 10 * MB,
+  /** Entries in the shared-string table. */
+  maxSharedStrings: 2_000_000,
+  /** Columns per row (column index, so a single cell in column ZZZ counts). */
+  maxColumns: 500,
+  /** Row number within a sheet. */
+  maxRowNumber: 2_000_000,
+  /** Cells read in one pass over a sheet. */
+  maxCellsPerPass: 25_000_000,
+};
+
+/** For error messages elsewhere. */
+export const MAX_COLUMNS = XLSX_LIMITS.maxColumns;
 
 export interface SheetInfo {
   name: string;
@@ -32,13 +62,30 @@ export interface Workbook {
   entries: Map<string, ZipEntry>;
 }
 
-function parseSmall(xml: string, on: { open?: (t: SaxesTagPlain) => void; text?: (t: string) => void; close?: (t: SaxesTagPlain) => void }) {
+/**
+ * A saxes parser that refuses any DOCTYPE. OOXML never contains one, and refusing it rules out entity
+ * expansion ("billion laughs") and external entities. saxes itself never fetches external entities.
+ */
+function safeParser(): SaxesParser {
   const p = new SaxesParser();
+  p.on('doctype', () => {
+    throw new XlsxError('unsafe');
+  });
+  return p;
+}
+
+function parseSmall(xml: string, on: { open?: (t: SaxesTagPlain) => void; text?: (t: string) => void; close?: (t: SaxesTagPlain) => void }) {
+  const p = safeParser();
   if (on.open) p.on('opentag', on.open);
   if (on.text) p.on('text', on.text);
   if (on.close) p.on('closetag', on.close as (t: SaxesTagPlain) => void);
   p.on('cdata', (t) => on.text?.(t));
-  p.write(xml).close();
+  try {
+    p.write(xml).close();
+  } catch (err) {
+    if (err instanceof XlsxError) throw err;
+    throw new XlsxError('damaged');
+  }
 }
 
 const local = (name: string) => name.slice(name.indexOf(':') + 1);
@@ -55,22 +102,28 @@ export function isDateFormat(code: string): boolean {
   return /[dmyhs]/i.test(stripped) && !/^general$/i.test(stripped.trim());
 }
 
-function readXml(buf: Buffer, entry: ZipEntry | undefined): string | null {
+function readXml(buf: Buffer, entry: ZipEntry | undefined, maxBytes: number): string | null {
   if (!entry) return null;
   try {
-    return readEntry(buf, entry, MAX_SMALL_ENTRY).toString('utf8');
+    return readEntry(buf, entry, maxBytes).toString('utf8');
   } catch {
     throw new XlsxError('too_large');
   }
 }
 
+/** Checks the zip directory against the entry-count and total-size limits (also used at upload time). */
+export function checkZipLimits(list: ZipEntry[]): void {
+  if (list.length > XLSX_LIMITS.maxEntries) throw new XlsxError('too_many_parts');
+  if (list.reduce((s, e) => s + e.uncompressedSize, 0) > XLSX_LIMITS.maxTotalUncompressed) throw new XlsxError('too_large');
+}
+
 export function openWorkbook(buf: Buffer): Workbook {
   const list = listEntries(buf);
   if (!list) throw new XlsxError('damaged');
-  if (list.reduce((s, e) => s + e.uncompressedSize, 0) > MAX_UNZIPPED_BYTES) throw new XlsxError('too_large');
+  checkZipLimits(list);
   const entries = new Map(list.map((e) => [e.name, e]));
 
-  const workbookXml = readXml(buf, entries.get('xl/workbook.xml'));
+  const workbookXml = readXml(buf, entries.get('xl/workbook.xml'), XLSX_LIMITS.maxOtherXml);
   if (!workbookXml) throw new XlsxError('damaged');
   const declared: Array<{ name: string; rid: string }> = [];
   let date1904 = false;
@@ -83,7 +136,7 @@ export function openWorkbook(buf: Buffer): Workbook {
   });
 
   const targets = new Map<string, string>();
-  const relsXml = readXml(buf, entries.get('xl/_rels/workbook.xml.rels'));
+  const relsXml = readXml(buf, entries.get('xl/_rels/workbook.xml.rels'), XLSX_LIMITS.maxOtherXml);
   if (relsXml) {
     parseSmall(relsXml, {
       open(t) {
@@ -98,7 +151,7 @@ export function openWorkbook(buf: Buffer): Workbook {
     .filter((s) => entries.has(s.path));
 
   const sharedStrings: string[] = [];
-  const ssXml = readXml(buf, entries.get('xl/sharedStrings.xml'));
+  const ssXml = readXml(buf, entries.get('xl/sharedStrings.xml'), XLSX_LIMITS.maxSharedStringsXml);
   if (ssXml) {
     let current: string | null = null;
     let inText = false;
@@ -118,6 +171,7 @@ export function openWorkbook(buf: Buffer): Workbook {
         if (n === 't') inText = false;
         else if (n === 'rPh') inPhonetic = false;
         else if (n === 'si') {
+          if (sharedStrings.length >= XLSX_LIMITS.maxSharedStrings) throw new XlsxError('too_large');
           sharedStrings.push(current ?? '');
           current = null;
         }
@@ -126,7 +180,7 @@ export function openWorkbook(buf: Buffer): Workbook {
   }
 
   const dateStyles = new Set<number>();
-  const stylesXml = readXml(buf, entries.get('xl/styles.xml'));
+  const stylesXml = readXml(buf, entries.get('xl/styles.xml'), XLSX_LIMITS.maxOtherXml);
   if (stylesXml) {
     const custom = new Map<number, string>();
     let inCellXfs = false;
@@ -194,8 +248,9 @@ export async function* readSheetRows(
 ): AsyncGenerator<SheetRow> {
   const entry = wb.entries.get(sheet.path);
   if (!entry) throw new XlsxError('damaged');
-  const parser = new SaxesParser();
+  const parser = safeParser();
   const ready: SheetRow[] = [];
+  let cellsRead = 0;
   let rowN = 0;
   let cells: string[] = [];
   let cell: { col: number; type: string; style: number; value: string; inline: string } | null = null;
@@ -207,13 +262,15 @@ export async function* readSheetRows(
     switch (local(t.name)) {
       case 'row':
         rowN = t.attributes.r ? Number(t.attributes.r) : rowN + 1;
+        if (!Number.isFinite(rowN) || rowN > XLSX_LIMITS.maxRowNumber) throw new XlsxError('too_many_cells');
         cells = [];
         nextCol = 1;
         break;
       case 'c': {
         const ref = /^([A-Z]+)/.exec(t.attributes.r ?? '');
         const col = ref ? colNumber(ref[1]!) : nextCol;
-        if (col > MAX_COLUMNS) throw new XlsxError('too_many_columns');
+        if (col > XLSX_LIMITS.maxColumns) throw new XlsxError('too_many_columns');
+        if (++cellsRead > XLSX_LIMITS.maxCellsPerPass) throw new XlsxError('too_many_cells');
         cell = { col, type: t.attributes.t ?? 'n', style: Number(t.attributes.s ?? 0), value: '', inline: '' };
         nextCol = col + 1;
         break;
@@ -287,7 +344,7 @@ export async function* readSheetRows(
   });
 
   try {
-    for await (const text of streamEntryText(buf, entry, MAX_UNZIPPED_BYTES)) {
+    for await (const text of streamEntryText(buf, entry, XLSX_LIMITS.maxSheetXml)) {
       parser.write(text);
       if (ready.length > 0) yield* ready.splice(0);
     }
@@ -308,7 +365,7 @@ export async function readMerges(buf: Buffer, wb: Workbook, sheet: SheetInfo, ro
   const re = /<(?:\w+:)?mergeCell\s+ref="([A-Z]+)(\d+):([A-Z]+)(\d+)"/g;
   let carry = '';
   try {
-    for await (const text of streamEntryText(buf, entry, MAX_UNZIPPED_BYTES)) {
+    for await (const text of streamEntryText(buf, entry, XLSX_LIMITS.maxSheetXml)) {
       const chunk = carry + text;
       re.lastIndex = 0;
       let m: RegExpExecArray | null;

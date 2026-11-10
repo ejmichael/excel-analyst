@@ -107,6 +107,13 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 - **Preview** returns typed values: numbers as numbers, booleans as booleans, dates as `YYYY-MM-DD` strings, datetimes as `YYYY-MM-DDTHH:MM:SS` (SAST wall-clock), and `null` for empty cells. It is the owner's data and is not masked. It needs `ready`, else 409 `dataset_not_ready`; an expired dataset is 410.
 - **`expired` datasets** are still returned by GET (columns intact). Preview and reparse are 410.
 
+- **Contract changes applied 2026-11-10 (approved by the user).** Re-copy `docs/api-types.ts` to `client/src/api/types.ts`.
+  - `Dataset.error_details: PlanLimitDetails | null`. On a too-many-rows failure it is `{ limit_key: "max_rows", limit, used, upgrade_to }`, where `used` is the data-row count (1 000 001 past the counting cap) and `upgrade_to` is the cheapest plan that allows it. Use it for the upgrade dialog instead of parsing `error_message`. It is null in every other case, and reparse resets it.
+  - Dataset `name` (upload and PATCH) is trimmed, 1 to 200 characters. Column `display_name` is trimmed, 1 to 120, or null. Anything else is 422 with `path` `name` or `columns.N.display_name`.
+  - `ValidationFailedDetails` is now in `api-types.ts`. Same shape as before, no behaviour change.
+  - Reparse keeps `display_name`, `semantic`, `is_pii` and `vat_included` for columns whose `sql_name` is unchanged; this is now tested. Column **ids change** after a reparse, so re-read them from the detail before editing again.
+- **Hostile workbooks** end as 415 at upload when the zip directory alone shows the problem (too many parts, too large once unzipped). Otherwise the dataset ends `failed` with a specific `error_message`, for example "This workbook has too many rows or cells to read." or the document-type-declaration message.
+
 ## Known issues and decisions
 - **2026-11-09 (S0): oversized and malformed JSON.** These answer 422 `validation_failed`. 413 `file_too_large` is reserved for uploads in the contract, and no other code fits.
 - **2026-11-09 (S0): malformed ids.** A malformed UUID in a route id answers 404 `not_found` instead of 422, because it can never match a row.
@@ -124,3 +131,12 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 - **2026-11-10 (S1): jobs and the boot sweep are in-process.** At most 2 profiling jobs run at a time, and the rest wait in memory. On restart, `profiling` datasets become `failed`. With more than one server instance, a booting instance would also fail the other instance's running jobs. This is fine for one instance; revisit before scaling out.
 - **2026-11-10 (S1): zip-bomb guard.** Declared uncompressed sizes are capped at 500 MB, and actual inflated bytes are counted per entry against the same cap. XLSX is also capped at 500 columns and 2 000 000 rows, and every job at 120 s.
 - **2026-11-10 (S1): CSV with a single column** is 415 ("We could not find separate columns"), because the content check requires a consistent delimiter.
+- **2026-11-10 (S1): migration `db/migrations/20261110_01_dataset_error_details_and_name_length.sql`** adds `datasets.error_details jsonb` and widens the `datasets.name` check to 1 to 200. The user ran it on the dev project on 2026-11-10. It must be run on every other environment.
+- **2026-11-10 (S1): XLSX limits** (`XLSX_LIMITS` in `server/src/services/parsing/xlsx.ts`). Each is a clear, user-safe failure, never a crash.
+  - Zip directory: at most 10 000 entries and 500 MB total declared uncompressed size. Both are checked at upload (415) and again when reading.
+  - Actual inflated bytes, counted while reading, so a zip that lies about its sizes is still stopped: a sheet XML part at most 500 MB, `sharedStrings.xml` at most 64 MB, other XML parts (workbook, rels, styles) at most 10 MB.
+  - Shared-string table: at most 2 000 000 entries.
+  - Sheet shape: at most 500 columns, row numbers up to 2 000 000, and 25 000 000 cells per pass over a sheet.
+  - XML: any DOCTYPE is refused, so there is no entity expansion and no external entities. `saxes` never fetches external resources anyway.
+  - Plan rows: the first pass only counts and keeps per-column counters. It counts data rows up to 1 000 000 so the message can state M. The pass that holds memory (normalised CSV and distinct-value sets) runs only when the row count is within the plan's `max_rows`. Rows held back as possible "Total" footers are capped at 1 000.
+  - Every job stops at 120 s.
