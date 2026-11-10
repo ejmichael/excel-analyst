@@ -21,10 +21,18 @@ export interface ToolSpec {
   parameters: Record<string, unknown>;
 }
 
+/** A later turn in the same conversation (repair, narrator retry). Assistant turns carry the previous tool input as JSON text. */
+export interface FollowUp {
+  role: 'assistant' | 'user';
+  content: string;
+}
+
 export interface ToolCallRequest<T> {
   role: ModelRole;
   system: string;
   user: string;
+  /** Turns after the first user message, in order. */
+  followUps?: FollowUp[];
   tool: ToolSpec;
   schema: z.ZodType<T>;
   maxTokens: number;
@@ -66,6 +74,7 @@ export interface ProviderRequest {
   model: string;
   system: string;
   user: string;
+  followUps: FollowUp[];
   tool: ToolSpec;
   maxTokens: number;
   temperature?: number;
@@ -139,6 +148,7 @@ export function openRouterProvider(opts: { apiKey: string; title: string; fetch?
           messages: [
             { role: 'system', content: req.system },
             { role: 'user', content: req.user },
+            ...req.followUps.map((t) => ({ role: t.role, content: t.content })),
           ],
           tools: [{ type: 'function', function: req.tool }],
           tool_choice: req.forced ? { type: 'function', function: { name: req.tool.name } } : 'auto',
@@ -206,7 +216,7 @@ export function anthropicProvider(opts: { apiKey: string; client?: Anthropic }):
             // A forced tool call cannot run with thinking on; models that reject forced choice keep their default thinking.
             ...(req.forced ? { thinking: { type: 'disabled' as const } } : {}),
             system: req.system,
-            messages: [{ role: 'user', content: req.user }],
+            messages: [{ role: 'user', content: req.user }, ...req.followUps.map((t) => ({ role: t.role, content: t.content }))],
             tools: [
               {
                 name: req.tool.name,
@@ -292,6 +302,7 @@ export function createLlmClient(deps: {
         model,
         system: forced ? req.system : `${req.system}\n\n${callToolInstruction(req.tool.name)}`,
         user: req.user,
+        followUps: req.followUps ?? [],
         tool: req.tool,
         maxTokens: req.maxTokens,
         temperature: caps.temperature ? req.temperature : undefined,
