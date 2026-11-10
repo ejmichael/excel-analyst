@@ -1,5 +1,6 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { AppError, DbError } from '../lib/errors.js';
+import { StorageError } from '../lib/storage.js';
 import type { ApiError } from '../types/api.js';
 
 /** JSON 404 for unknown routes. */
@@ -40,6 +41,8 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, next) 
   const log = req.log;
   if (err instanceof DbError) {
     log?.error({ op: err.op, db_code: err.dbCode }, 'database error');
+  } else if (err instanceof StorageError) {
+    log?.error({ op: err.op }, 'storage error');
   } else {
     log?.error({ err_name: err instanceof Error ? err.name : typeof err, stack: err instanceof Error ? err.stack : undefined }, 'unhandled error');
   }

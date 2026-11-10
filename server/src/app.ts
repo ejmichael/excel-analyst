@@ -7,7 +7,9 @@ import { requireAuth } from './middleware/auth.js';
 import { requireConsent } from './middleware/consent.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { ipRateLimit, userRateLimit } from './middleware/rateLimit.js';
+import { datasetsRouter } from './routes/datasets.js';
 import { healthRouter } from './routes/health.js';
+import { internalRouter } from './routes/internal.js';
 import { meRouter } from './routes/me.js';
 import { workspacesRouter } from './routes/workspaces.js';
 
@@ -27,6 +29,7 @@ export function createApp(): Express {
 
   const v1 = Router();
   v1.use(healthRouter);
+  v1.use(internalRouter); // x-cron-secret, no user token
 
   // Everything below needs a valid Supabase access token.
   v1.use(requireAuth, userRateLimit);
@@ -35,6 +38,7 @@ export function createApp(): Express {
   // Everything below also needs consent (profiles.popia_consent_at).
   v1.use(requireConsent);
   v1.use(workspacesRouter);
+  v1.use(datasetsRouter);
 
   app.use('/api/v1', v1);
   app.use(notFoundHandler);

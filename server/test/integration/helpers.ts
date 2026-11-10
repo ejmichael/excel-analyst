@@ -30,10 +30,32 @@ export async function createTestUser(): Promise<TestUser> {
   return { id: data.user.id, email, token: signIn.data.session.access_token, client };
 }
 
-/** Deleting the auth user cascades to profiles, workspaces and everything they own. */
+/** Every storage object under `<ownerId>/` in the datasets bucket (two levels: dataset folder, then files). */
+export async function listOwnerObjects(ownerId: string): Promise<string[]> {
+  const bucket = supabaseAdmin().storage.from(env().STORAGE_BUCKET_DATASETS);
+  const { data: folders } = await bucket.list(ownerId, { limit: 1000 });
+  const paths: string[] = [];
+  for (const folder of folders ?? []) {
+    const { data: files } = await bucket.list(`${ownerId}/${folder.name}`, { limit: 1000 });
+    for (const f of files ?? []) paths.push(`${ownerId}/${folder.name}/${f.name}`);
+  }
+  return paths;
+}
+
+/** Removes the users' storage objects, then the users. Deleting the auth user cascades to every row they own. */
 export async function deleteTestUsers(): Promise<void> {
   const ids = created.splice(0);
+  const bucket = supabaseAdmin().storage.from(env().STORAGE_BUCKET_DATASETS);
+  for (const id of ids) {
+    const paths = await listOwnerObjects(id);
+    if (paths.length > 0) await bucket.remove(paths);
+  }
   await Promise.all(ids.map((id) => supabaseAdmin().auth.admin.deleteUser(id)));
+}
+
+export async function setPlan(userId: string, plan: 'free' | 'solo' | 'practice' | 'practice_plus'): Promise<void> {
+  const { error } = await supabaseAdmin().from('profiles').update({ plan }).eq('id', userId);
+  if (error) throw new Error(`setPlan failed: ${error.code}`);
 }
 
 export const bearer = (u: TestUser) => ({ Authorization: `Bearer ${u.token}` });

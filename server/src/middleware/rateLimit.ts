@@ -30,6 +30,16 @@ export const ipRateLimit: RequestHandler = rateLimit({
   handler,
 });
 
+/** Uploads: 10 per minute per user (on top of the general limit). */
+export const uploadRateLimit: RequestHandler = rateLimit({
+  windowMs: WINDOW_MS,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.auth ? `upload:${req.auth.userId}` : ipKey(req)),
+  handler,
+});
+
 /** After auth: 300 per minute per user. */
 export const userRateLimit: RequestHandler = rateLimit({
   windowMs: WINDOW_MS,

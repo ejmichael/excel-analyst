@@ -7,7 +7,7 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 | Slice | Scope | Server | Client |
 |---|---|---|---|
 | S0 | Foundation, auth, consent, workspaces, me | DONE | DONE |
-| S1 | Upload, parse, profile, preview | TODO | DONE (mocks; server S1 not DONE yet) |
+| S1 | Upload, parse, profile, preview | DONE | DONE (mocks; server S1 not DONE yet) |
 | S2 | Ask, verify, source rows | TODO | TODO |
 | S3 | Reports and branding | TODO | TODO |
 | S4 | Export and share | TODO | TODO |
@@ -24,14 +24,14 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 | S0 | POST `/workspaces` | DONE |
 | S0 | PATCH `/workspaces/:id` | DONE |
 | S0 | DELETE `/workspaces/:id` | DONE |
-| S1 | POST `/datasets` | TODO |
-| S1 | GET `/datasets` | TODO |
-| S1 | GET `/datasets/:id` | TODO |
-| S1 | PATCH `/datasets/:id` | TODO |
-| S1 | POST `/datasets/:id/reparse` | TODO |
-| S1 | GET `/datasets/:id/preview` | TODO |
-| S1 | DELETE `/datasets/:id` | TODO |
-| S1 | POST `/internal/purge-expired` | TODO |
+| S1 | POST `/datasets` | DONE |
+| S1 | GET `/datasets` | DONE |
+| S1 | GET `/datasets/:id` | DONE |
+| S1 | PATCH `/datasets/:id` | DONE |
+| S1 | POST `/datasets/:id/reparse` | DONE |
+| S1 | GET `/datasets/:id/preview` | DONE |
+| S1 | DELETE `/datasets/:id` | DONE |
+| S1 | POST `/internal/purge-expired` | DONE |
 | S2 | POST `/datasets/:id/ask` | TODO |
 | S2 | GET `/datasets/:id/blocks` | TODO |
 | S2 | GET `/blocks/:id` | TODO |
@@ -82,10 +82,45 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 - **429 `rate_limited`** carries a `Retry-After` header in seconds. The limit is 300 per minute per user.
 - **401 `unauthorized`.** Expired tokens get this too. Refresh the Supabase session and retry once before signing out.
 
+- **S1 (2026-11-10). Upload.** Send `multipart/form-data` with `file`, `workspace_id` and optional `name` (1 to 120 characters; it defaults to the file name without its extension). The response is 201 `Dataset` with `status: 'profiling'`. Poll `GET /datasets/:id` every 1.5 s until `ready` or `failed`; fixture files take about 1 to 3 s.
+- **Upload errors.**
+  - 404: the workspace is not the caller's.
+  - 402 `max_datasets_per_month`.
+  - 413 `file_too_large`: over 50 MB, on **every** plan.
+  - 402 `max_file_mb`: over the plan's size. `details.used` is the size in MB with 2 decimals.
+  - 415 `file_unsupported`: not a CSV or .xlsx by content. The `message` is specific (old .xls, UTF-16 CSV, a zip that is not a workbook, no columns found); show it as written.
+  - 422: a missing file or bad fields.
+  - 429: more than 10 uploads a minute.
+- **Too many rows** is not an error code. The dataset ends `failed` with `error_message` "Your plan allows 20 000 rows; this file has 20 001." (numbers grouped with plain spaces).
+- **`failed` datasets** always carry a short, user-safe `error_message`. Offer "Try other options" (reparse). After a server restart: "Interrupted by a restart. Please try again."
+- **Reparse.** It returns 202 with `status: 'profiling'`; poll again. Only the fields you send (non-null) override detection, so send the full set from the parse dialog. Column edits (`display_name`, `semantic`, `is_pii`, `vat_included`) carry over by `sql_name`. Errors:
+  - 409 `conflict`: already profiling.
+  - 410 `dataset_expired`: the file was removed by retention.
+  - 422: `sheet_name` is not in `sheet_names`.
+- **`parse_options`** holds the effective options. `header_row` is the 1-based row in the original file. `date_format` is `ymd` for files with ISO dates only, and `null` when the file has no dates. `delimiter` is null for XLSX, `sheet_name` null for CSV.
+- **`warnings`** are short sentences to show as written. They cover the ambiguous date order, renamed headers, rows with extra values, excluded total/empty rows, which sheet was used, and "We could not generate suggested questions."
+- **Masking.** PII columns always come back with placeholder `sample_values` (`[email]`, `[phone]`, `[id]`, `[name]`, `[address]`) and with `min_value`/`max_value` set to `null`. Setting `is_pii: false` returns real samples in the PATCH response.
+- **PATCH rules.**
+  - A column id from another dataset is 422 with `path: "columns.N.id"`.
+  - Setting `semantic` to email, phone, sa_id_number, person_name or address also sets `is_pii`, unless the same request sends `is_pii`.
+  - An empty body is 422.
+- **Preview** returns typed values: numbers as numbers, booleans as booleans, dates as `YYYY-MM-DD` strings, datetimes as `YYYY-MM-DDTHH:MM:SS` (SAST wall-clock), and `null` for empty cells. It is the owner's data and is not masked. It needs `ready`, else 409 `dataset_not_ready`; an expired dataset is 410.
+- **`expired` datasets** are still returned by GET (columns intact). Preview and reparse are 410.
+
 ## Known issues and decisions
 - **2026-11-09 (S0): oversized and malformed JSON.** These answer 422 `validation_failed`. 413 `file_too_large` is reserved for uploads in the contract, and no other code fits.
 - **2026-11-09 (S0): malformed ids.** A malformed UUID in a route id answers 404 `not_found` instead of 422, because it can never match a row.
 - **2026-11-09 (S0): concurrent workspace creates.** `assertWithinLimit` checks a count and then the insert happens. Two simultaneous `POST /workspaces` calls could both pass on the last free slot. This is acceptable for the MVP; a DB-side check can be added if it matters.
 - **2026-11-09 (S0): rate-limit counters are in memory**, per server process. They reset on restart and are not shared across instances. Fine for one instance.
-- **2026-11-09 (S0): `deleteWorkspaceFiles(ownerId, workspaceId)`** (`server/src/services/files.ts`) is an empty stub. Part 2 must fill it in. It runs before the workspace row is deleted, because the cascade removes the dataset rows that hold the storage paths.
+- **2026-11-09 (S0), done in S1: `deleteWorkspaceFiles`** now removes every raw and normalised file of the workspace's datasets before the workspace row (and, by cascade, the dataset rows) is deleted.
 - **Open for S5: which event counts against `max_reports_per_month` for template runs.** The limit currently counts `usage_events.kind = 'report'` only. Flow D says template runs count against `max_reports_per_month`, so a run must also write a `report` event, or the counter must include `report_run`. Decide in S5; it does not affect S0.
+- **2026-11-10 (S1): upload counting.** The `upload` usage event is written when the upload is accepted (201). It is not refunded if profiling later fails (including the too-many-rows case). Reparse does not count.
+- **2026-11-10 (S1): check order.** The order is workspace (404), monthly datasets (402), then size. Above the 50 MB ceiling the answer is 413 on every plan, even where `max_file_mb` is lower, because no upgrade can help. 402 `max_file_mb` is only for files a bigger plan would accept. The prompt listed 402 before 413; this changes only the >50 MB case.
+- **2026-11-10 (S1): LLM provider.** At the user's request, `server/src/llm/client.ts` supports `LLM_PROVIDER=openrouter|anthropic` with the same forced tool call. Development uses OpenRouter with `ANTHROPIC_MODEL_FAST=anthropic/claude-haiku-5.5`. Claude Sonnet 5.5 rejects forced tool calls on every provider, which matters for the S2 planner; see `docs/CONTRACT_CHANGES.md` (2026-11-09), status PROPOSED. Neither 5.5 model accepts `temperature`: OpenRouter drops it silently, and the Anthropic provider never sends it. OpenRouter requests use `provider.data_collection: "deny"`.
+- **2026-11-10 (S1): LLM cost.** OpenRouter's `usage.cost` is in USD; it matched tokens x the listed price exactly in a test call. The fallback table is `server/src/config/prices.ts`, read 2026-11-09 from OpenRouter's models API and Anthropic's pricing. A model missing from the table logs `cost_usd: null`, never a guess.
+- **2026-11-10 (S1): XLSX reader.** `exceljs`'s streaming reader needs `xl/workbook.xml` before the sheets in the zip, and it spills sheets to temp files on disk when they come before the shared strings (which is how Excel writes them). The server therefore reads XLSX with its own small streaming reader (`server/src/services/parsing/xlsx.ts`: central-directory zip reader + `saxes`). Nothing touches disk, and decompressed bytes are capped at 500 MB in total. `exceljs` is now a dev dependency, used only to build test workbooks. Formulas are never evaluated (the cached values are used). Merged cells are repeated in the top 100 rows only (where headers live).
+- **2026-11-10 (S1): reparse carry-over.** Reparse carries the previous `display_name`, `semantic`, `is_pii` and `vat_included` by `sql_name`, whether the user set them or detection did. There is no field recording which values were edited. Effect: a detected meaning sticks across reparses unless the user changes it.
+- **2026-11-10 (S1): failed datasets get `expires_at`** (now + retention), so the retention job also removes their raw files.
+- **2026-11-10 (S1): jobs and the boot sweep are in-process.** At most 2 profiling jobs run at a time, and the rest wait in memory. On restart, `profiling` datasets become `failed`. With more than one server instance, a booting instance would also fail the other instance's running jobs. This is fine for one instance; revisit before scaling out.
+- **2026-11-10 (S1): zip-bomb guard.** Declared uncompressed sizes are capped at 500 MB, and actual inflated bytes are counted per entry against the same cap. XLSX is also capped at 500 columns and 2 000 000 rows, and every job at 120 s.
+- **2026-11-10 (S1): CSV with a single column** is 415 ("We could not find separate columns"), because the content check requires a consistent delimiter.
