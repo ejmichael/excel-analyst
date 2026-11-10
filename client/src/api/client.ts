@@ -1,6 +1,7 @@
 import type { ApiError as ApiErrorBody, ErrorCode, PlanLimitDetails } from './types';
 import { API_BASE } from '@/env';
 import { ERROR_MESSAGES, NETWORK_ERROR_MESSAGE, fieldErrorsFrom, isErrorCode } from '@/lib/errors';
+import { formatNumber } from '@/lib/format';
 import { xhrUpload } from './xhrUpload';
 
 /** Thrown by apiFetch for every non-2xx response, and for network failures (status 0). */
@@ -120,9 +121,10 @@ async function authorised<T>(send: (headers: Record<string, string>) => Promise<
     throw new ApiError(response.status, 'internal', ERROR_MESSAGES.internal);
   }
 
-  const error = toApiError(response.status, payload);
   const retryAfter = Number(response.headers.get('Retry-After'));
-  if (Number.isFinite(retryAfter) && retryAfter > 0) error.retryAfterSeconds = retryAfter;
+  const error = toApiError(response.status, payload, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null);
+  // Only a 401 means the session is gone. 500, 429 and every other status are ordinary errors: the user stays
+  // signed in and sees a message (an outage is not a reason to sign anyone out).
   if (error.status === 401) config.onUnauthorized();
   else if (error.code === 'consent_required') config.onConsentRequired();
   throw error;
@@ -159,12 +161,19 @@ export function apiUpload<T>(
   return authorised<T>((headers) => config.uploadTransport(`${API_BASE}${path}`, { form, headers, onProgress, signal }));
 }
 
-function toApiError(status: number, payload: unknown): ApiError {
+function toApiError(status: number, payload: unknown, retryAfterSeconds: number | null): ApiError {
   const body = (payload as Partial<ApiErrorBody> | null)?.error;
   const code: ErrorCode = isErrorCode(body?.code) ? body.code : (STATUS_FALLBACK[status] ?? 'internal');
   const serverMessage = typeof body?.message === 'string' && body.message ? body.message : null;
-  const message = USE_SERVER_MESSAGE.has(code) && serverMessage ? serverMessage : ERROR_MESSAGES[code];
-  return new ApiError(status, code, message, body?.details, serverMessage);
+  const message =
+    code === 'rate_limited' && retryAfterSeconds
+      ? `Too many requests in a short time. Wait ${formatNumber(retryAfterSeconds, 0)} seconds and try again.`
+      : USE_SERVER_MESSAGE.has(code) && serverMessage
+        ? serverMessage
+        : ERROR_MESSAGES[code];
+  const error = new ApiError(status, code, message, body?.details, serverMessage);
+  error.retryAfterSeconds = retryAfterSeconds;
+  return error;
 }
 
 /** User-facing text for anything thrown. */

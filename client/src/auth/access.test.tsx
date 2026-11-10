@@ -84,3 +84,61 @@ describe('route guards (rendered, mock mode)', () => {
     expect(await screen.findByRole('heading', { name: 'Settings' })).toBeInTheDocument();
   });
 });
+
+describe('sign-out only on 401 (rendered, real routes)', () => {
+  // GET /me answers with the given status; everything else goes to the normal mock API.
+  function meAnswers(status: number, body: unknown, headers: Record<string, string> = {}) {
+    configureApiClient({
+      transport: async (url, init) =>
+        new URL(url).pathname.endsWith('/me') && (init.method ?? 'GET') === 'GET'
+          ? new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } })
+          : mockTransport(url, init),
+      refreshAccessToken: async () => (await mockAuthBackend.getSession())?.access_token ?? null,
+    });
+  }
+
+  function renderAt(path: string) {
+    const router = createMemoryRouter(routes, { initialEntries: [path] });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider backend={mockAuthBackend}>
+          <RouterProvider router={router} />
+        </SessionProvider>
+      </QueryClientProvider>,
+    );
+    return router;
+  }
+
+  beforeEach(async () => {
+    setMockLatency(0);
+    mockStore.reset();
+    await mockAuthBackend.signIn('owner@example.co.za', 'password123');
+  });
+
+  it('a 500 shows an error with a retry and keeps the user signed in', async () => {
+    meAnswers(500, { error: { code: 'internal', message: 'Auth provider unavailable' } });
+    const router = renderAt('/settings');
+    expect(await screen.findByRole('heading', { name: 'We could not load your account' })).toBeInTheDocument();
+    expect(screen.getByText('Something went wrong on our side. Please try again.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/settings');
+    expect(await mockAuthBackend.getSession()).not.toBeNull();
+  });
+
+  it('a 429 shows how long to wait and keeps the user signed in', async () => {
+    meAnswers(429, { error: { code: 'rate_limited', message: 'Slow down' } }, { 'Retry-After': '20' });
+    const router = renderAt('/settings');
+    expect(await screen.findByText('Too many requests in a short time. Wait 20 seconds and try again.')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/settings');
+    expect(await mockAuthBackend.getSession()).not.toBeNull();
+  });
+
+  it('a 401 signs the user out and goes to /sign-in', async () => {
+    meAnswers(401, { error: { code: 'unauthorized', message: 'Token rejected' } });
+    const router = renderAt('/settings');
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/sign-in');
+    expect(await mockAuthBackend.getSession()).toBeNull();
+  });
+});

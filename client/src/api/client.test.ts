@@ -112,6 +112,54 @@ describe('apiFetch', () => {
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 
+  describe('only a 401 signs the user out', () => {
+    const refresh = vi.fn(async () => 'token-fresh');
+    beforeEach(() => {
+      refresh.mockClear();
+      configureApiClient({ refreshAccessToken: refresh });
+    });
+
+    it('a 500 (for example Supabase being down) is an ordinary error: no refresh, no sign-out', async () => {
+      transport.mockResolvedValue(json(500, { error: { code: 'internal', message: 'Auth service unavailable' } }));
+      const error = (await apiFetch('/me').catch((e: unknown) => e)) as ApiError;
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error.status).toBe(500);
+      expect(error.message).toBe('Something went wrong on our side. Please try again.');
+      expect(refresh).not.toHaveBeenCalled();
+      expect(onUnauthorized).not.toHaveBeenCalled();
+      expect(transport).toHaveBeenCalledTimes(1);
+    });
+
+    it('a 429 with Retry-After is an ordinary error that says how long to wait: no refresh, no sign-out', async () => {
+      transport.mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: 'rate_limited', message: 'Slow down' } }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Retry-After': '30' },
+        }),
+      );
+      const error = (await apiFetch('/me').catch((e: unknown) => e)) as ApiError;
+      expect(error.code).toBe('rate_limited');
+      expect(error.retryAfterSeconds).toBe(30);
+      expect(error.message).toBe('Too many requests in a short time. Wait 30 seconds and try again.');
+      expect(refresh).not.toHaveBeenCalled();
+      expect(onUnauthorized).not.toHaveBeenCalled();
+    });
+
+    it('a 500 without a JSON body is still not a sign-out', async () => {
+      transport.mockResolvedValue(new Response('<html>Bad gateway</html>', { status: 502 }));
+      const error = (await apiFetch('/me').catch((e: unknown) => e)) as ApiError;
+      expect(error.status).toBe(502);
+      expect(onUnauthorized).not.toHaveBeenCalled();
+    });
+
+    it('a 401 after a successful refresh-and-retry that still fails does sign out', async () => {
+      transport.mockResolvedValue(json(401, { error: { code: 'unauthorized', message: 'Token rejected' } }));
+      await apiFetch('/me').catch(() => undefined);
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('treats a 401 without a JSON body as unauthorized too', async () => {
     transport.mockResolvedValue(new Response('nope', { status: 401 }));
     const error = (await apiFetch('/me').catch((e: unknown) => e)) as ApiError;
