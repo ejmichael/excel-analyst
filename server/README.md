@@ -51,8 +51,9 @@ npm start            # node dist/index.js
 npm run typecheck
 npm test                    # unit tests, no network
 npm run test:integration    # real Supabase project from server/.env; the LLM is mocked
-RUN_LLM_TESTS=1 npm run test:llm   # opt-in: real model, prints suggestions, tokens and cost
+RUN_LLM_TESTS=1 npm run test:llm   # opt-in: real models; suggestions plus 12 questions checked against hand-computed values (about $0.15)
 npm run test:cleanup        # delete leftover server test users (test+<12 hex>@example.com) and their files
+RUN_LLM_TESTS=1 npx tsx scripts/ask-cli.ts 01_card_sales_semicolon_win1252.csv "What were net sales by store?"   # one real question, prints SQL, checks, tokens, cost
 ```
 
 No test in `npm test` or `npm run test:integration` calls the real LLM. `test:llm` profiles the three non-ambiguous fixtures locally, sends each suggestions prompt to the configured provider, and prints the five questions with tokens and cost (about $0.0003 per file with Haiku 5.5). It writes nothing to the database. On Windows PowerShell: `$env:RUN_LLM_TESTS=1; npm run test:llm`.

@@ -8,7 +8,7 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 |---|---|---|---|
 | S0 | Foundation, auth, consent, workspaces, me | DONE | DONE |
 | S1 | Upload, parse, profile, preview | DONE | DONE (tested against the real server) |
-| S2 | Ask, verify, source rows | TODO | TODO |
+| S2 | Ask, verify, source rows | DONE | TODO |
 | S3 | Reports and branding | TODO | TODO |
 | S4 | Export and share | TODO | TODO |
 | S5 | Templates and re-runs | TODO | TODO |
@@ -32,13 +32,13 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 | S1 | GET `/datasets/:id/preview` | DONE |
 | S1 | DELETE `/datasets/:id` | DONE |
 | S1 | POST `/internal/purge-expired` | DONE |
-| S2 | POST `/datasets/:id/ask` | TODO |
-| S2 | GET `/datasets/:id/blocks` | TODO |
-| S2 | GET `/blocks/:id` | TODO |
-| S2 | GET `/blocks/:id/source-rows` | TODO |
-| S2 | GET `/blocks/:id/export.csv` | TODO |
-| S2 | POST `/blocks/:id/feedback` | TODO |
-| S2 | DELETE `/blocks/:id` | TODO |
+| S2 | POST `/datasets/:id/ask` | DONE |
+| S2 | GET `/datasets/:id/blocks` | DONE |
+| S2 | GET `/blocks/:id` | DONE |
+| S2 | GET `/blocks/:id/source-rows` | DONE |
+| S2 | GET `/blocks/:id/export.csv` | DONE |
+| S2 | POST `/blocks/:id/feedback` | DONE |
+| S2 | DELETE `/blocks/:id` | DONE |
 | S3 | GET `/reports` | TODO |
 | S3 | POST `/reports` | TODO |
 | S3 | GET `/reports/:id` | TODO |
@@ -67,9 +67,11 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 | S6 | DELETE `/me` | TODO |
 
 ## Measured numbers (server fills in during S2)
-- Average input and output tokens per question: _not measured yet_
-- Average cost per question (USD, ZAR): _not measured yet_
-- Median and slowest ask latency: _not measured yet_
+- Measured 2026-11-10 with the real models through OpenRouter: 12 questions over fixtures 01-03 (`RUN_LLM_TESTS=1 npm run test:llm`). The local runner records the same model, token and cost figures that `usage_events` stores.
+- Planner (`anthropic/claude-sonnet-5.5`, tool choice "auto"): 13 calls (12 plans + 1 repair). Per call on average: 2 625 input and 516 output tokens, $0.010410, 3.7 s.
+- Narrator (`anthropic/claude-haiku-5.5`, forced tool): 12 calls (11 answers + 1 retry). Per call on average: 1 855 input and 237 output tokens, $0.000304, 1.7 s.
+- Average cost per question: $0.0116, about R0.21 at an assumed R18.00 per USD (not a live rate). The planner is about 90% of it.
+- Ask latency (model calls plus sandbox, measured on a laptop): median 5.3 s, slowest 8.9 s. Add network time to the server in production.
 
 ## Server notes for the client
 - **S0 (2026-11-09).** Base URL `http://localhost:4000/api/v1`. CORS allows only `CLIENT_URL` (default `http://localhost:5173`).
@@ -117,6 +119,18 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 - **Auth outages are not 401 (2026-11-10).** 401 `unauthorized` now means only that Supabase rejected the token (expired, invalid, user gone). If Supabase Auth cannot be reached, the API retries once and then answers 500 `internal` ("We could not check your sign-in right now. Please try again.") or 429 `rate_limited` with `Retry-After`. **Do not sign the user out on a 500 or 429**; only on 401, after one session refresh.
 - **`max_file_mb` units** are now in the contract: `limit` and `used` are megabytes (1 048 576 bytes) rounded up to 2 decimals.
 
+- **S2 (2026-11-10). Ask.**
+  - `POST /datasets/:id/ask` is synchronous and usually takes 4 to 9 s; allow up to about 30 s. Show progress generically.
+  - The checks run in order: 404 (not the caller's dataset), 410 `dataset_expired`, 409 `dataset_not_ready`, 402 `plan_limit` (`max_questions_per_month`).
+  - 422 `cannot_answer`: show the `message` inline under the question box; it says what is missing.
+  - 502 `llm_failed`: nothing was saved and no question was counted; offer "Try again".
+  - 429 `rate_limited` comes either from the per-user limit (20 asks a minute) or from the server being busy. At most 2 questions are computed at once per server; a third waits up to 20 s and then gets 429. Both send `Retry-After`.
+  - If the client disconnects mid-ask, the server still finishes and saves the block, so it appears in history.
+- **Blocks.** A `flagged` block is a normal 201 answer. Show it with the amber banner and the failed check labels (plain English, for example "Total of net does not match your file"). `has_source_rows` is false when the planner used every row (no filter); hide the "Show source rows" button then.
+- **Source rows.** Send `eq_column` and `eq_value` together or not at all (otherwise 422). `eq_column` must be a dataset `sql_name`. `eq_value` is a string that is cast to the column type, for example `2026-10-01` for dates and `true`/`false` for booleans; a value of the wrong type is 422 with `path: "eq_value"`. Rows are typed like the preview and are not masked. `limit` is at most 200.
+- **CSV export.** UTF-8 with BOM, comma-separated, CRLF line endings, file name `<title-slug>-<YYYY-MM-DD>.csv`. Text cells that start with `=`, `+`, `-`, `@`, a tab or a carriage return get a leading apostrophe (`'=SUM(...)`) so spreadsheets never run them as formulas. Numeric cells stay plain numbers, including negatives. Download with fetch and the token, then save the blob.
+- **Delete** is 409 `conflict` while the block is pinned in a report.
+
 ## Known issues and decisions
 - **2026-11-09 (S0): oversized and malformed JSON.** These answer 422 `validation_failed`. 413 `file_too_large` is reserved for uploads in the contract, and no other code fits.
 - **2026-11-09 (S0): malformed ids.** A malformed UUID in a route id answers 404 `not_found` instead of 422, because it can never match a row.
@@ -152,3 +166,11 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
   - Users are created one at a time. Cleanup in `afterAll` (which Vitest runs even when `beforeAll` throws; checked) waits for in-flight creations, also finds users whose create response was lost (emails are recorded first), and deletes each user and their files independently.
   - Before each run, `globalSetup` deletes server test users (`test+<12 hex>@example.com` only) older than 1 hour. `npm run test:cleanup` deletes them all now.
   - Leftovers: a run that fails in setup or in tests leaves 0 (checked by forcing a sign-in failure twice). Leftovers happen only if the process is killed before `afterAll`, or Supabase is down during cleanup: at most 2 (Part 1 file) + 4 (datasets file) = 6 per run. The next run's sweep removes them after an hour. The client chat's `test+client-*@example.com` users are never touched.
+- **2026-11-10 (S2): DuckDB `@duckdb/node-api` 1.5.6-r.2.** 2.0.0-r.1 (a new major, three weeks old) was available; 1.5.6 was chosen because the sandbox depends on exact setting names and parser output. Settings used: `enable_external_access=false` and `lock_configuration=true` after loading; at creation, `autoinstall_known_extensions`, `autoload_known_extensions`, `allow_community_extensions`, `allow_unsigned_extensions` and `allow_persistent_secrets` all false, plus `max_temp_directory_size=0B` (no spilling user data to disk), `memory_limit=512MB` and `threads=2`.
+- **2026-11-10 (S2): memory on the host.** 2 concurrent sandboxes at 512 MB each can use about 1 GB on top of Node. KEYS_AND_SERVICES asks for a 1 GB instance. Use 2 GB, or lower `SANDBOX_LIMITS.memoryLimit` or `maxConcurrent` in `server/src/services/sandbox/sandbox.ts` before going live.
+- **2026-11-10 (S2): types in the sandbox.** Decimal columns load as DOUBLE (the planner rounds money with ROUND(x, 2); reconcile allows 0.005) and integer columns as BIGINT.
+- **2026-11-10 (S2): validation.** Validation has two layers: a lexical scan outside literals and quoted identifiers (no comments, semicolons or dollar quotes, and none of ARCHITECTURE 4's words plus a few more), then a walk of DuckDB's own parse tree (one SELECT; tables only `data` or a CTE; no table functions; no denied or qualified functions). The planner's `source_filter_sql` is validated at ask time too, so a bad filter is repaired then instead of failing when the user opens source rows.
+- **2026-11-10 (S2): repair and narrator retry turns.** Both send the previous tool input back as a plain-text assistant turn (JSON) followed by the user line from LLM_PROMPTS, so they work the same on OpenRouter and Anthropic. DuckDB error text has quoted literals and the SQL echo removed before it goes to the repair call, because DuckDB errors can quote cell values.
+- **2026-11-10 (S2): narrative rendering.** A NULL cell behind a token renders as "(no value)" and counts as resolved.
+- **2026-11-10 (S2): result masking for the narrator.** A result column is masked when its name is a PII column's sql_name, when the name itself looks personal, or when any of the first 50 values matches the email, SA mobile or SA ID detectors.
+- **2026-11-10 (S2): the stored `blocks.model`** is the planner model id.
