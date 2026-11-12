@@ -141,7 +141,8 @@ async function reconcileCheck(session: SandboxSession, sql: string, reconcile: N
   const label = `Total of ${humanise(reconcile.column)} matches your file`;
   try {
     const expected = await session.scalar(reconcile.total_sql);
-    const actual = await session.aggregateOf(sql, reconcile.column, reconcile.aggregation);
+    // Sum of the breakdown column for both aggregations: per-group counts add up to the total count.
+    const actual = await session.sumOf(sql, reconcile.column);
     if (expected === null || actual === null) {
       return { type: 'total_reconciles', ok: false, label: `We could not check the total of ${humanise(reconcile.column)}`, detail: 'One of the totals was empty.' };
     }

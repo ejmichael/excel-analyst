@@ -252,6 +252,39 @@ describe('ask: reconcile and truncation', () => {
     expect(r.block.checks.find((c) => c.type === 'total_reconciles')).toMatchObject({ ok: true, expected: 240, actual: 240 });
   });
 
+  it('a count by group with blank keys reconciles, whichever aggregation the planner names (bug 2026-11-12)', async () => {
+    // 13 synthetic contacts, 3 with no title. Before the fix, aggregation "count" counted the groups (9), not the contacts.
+    const titles = ['Manager', 'Manager', 'Clerk', 'Clerk', 'Driver', 'Owner', 'Cashier', 'Baker', 'Chef', 'Cleaner', '', ' ', ''];
+    const csv = `Name,Title\n${titles.map((t, i) => `Person ${i},${t}`).join('\n')}\n`;
+    const p = await profileFile({ buffer: Buffer.from(csv), fileType: 'csv', options: {}, maxRows: 1000 });
+    const contacts: AskInput = {
+      ...input,
+      datasetName: 'Contacts',
+      rowCount: p.rowCount,
+      columns: p.columns.map((c) => ({ ...c, display_name: null, vat_included: null })),
+      csv: p.normalisedCsv,
+      question: 'How many contacts per job title?',
+    };
+    const sql = 'SELECT "title" AS "title", COUNT(*) AS "contacts" FROM data GROUP BY "title" ORDER BY "contacts" DESC, "title" LIMIT 50';
+    for (const aggregation of ['count', 'sum'] as const) {
+      const plan = goodPlan({
+        sql,
+        source_filter_sql: null,
+        chart: { type: 'bar', x: 'title', y: ['contacts'], series: null, orientation: 'vertical', stacked: false, value_format: { title: 'text', contacts: 'integer' } },
+        reconcile: { column: 'contacts', aggregation, total_sql: 'SELECT count(*) FROM data' },
+      });
+      const { client } = fakeLlm({ plan_analysis: [plan], write_narrative: [{ narrative_template: '{{r0.title}} has {{r0.contacts}} contacts.', follow_ups: [] }] });
+      const r = await ask(contacts, { llm: client, recordLlm });
+      if (r.kind !== 'answered') throw new Error('expected an answer');
+      expect(r.block.checks.find((c) => c.type === 'total_reconciles'), aggregation).toMatchObject({ ok: true, expected: 13, actual: 13 });
+      expect(r.block.status).toBe('ok');
+      // The blank group is kept as its own row with a null key, in the stored rows.
+      expect(r.block.row_count).toBe(9);
+      expect(r.block.rows[0]).toEqual({ title: null, contacts: 3 });
+      expect(r.block.narrative).toBe('(no value) has 3 contacts.');
+    }
+  });
+
   it('more than 500 result rows: 500 stored, true count kept, flagged, narrator told', async () => {
     const plan = goodPlan({
       sql: 'SELECT a."reference" AS ref_a, b."reference" AS ref_b FROM data a, data b',

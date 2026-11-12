@@ -197,13 +197,16 @@ export class SandboxSession {
     return n;
   }
 
-  /** The sum (or count of rows) of one column over ALL rows of a query, without the row cap (for reconcile). */
-  async aggregateOf(sql: string, column: string, aggregation: 'sum' | 'count'): Promise<number | null> {
+  /**
+   * The sum of one column over ALL rows of a query, without the row cap (for reconcile). Always a sum: in a breakdown
+   * by group, a count per group must add up to the table's count just as a sum per group adds up to its total.
+   * (Counting the column's values would count the groups instead.) Rows with a NULL group key are included.
+   */
+  async sumOf(sql: string, column: string): Promise<number | null> {
     await this.validate(sql);
     const quoted = `"${column.replace(/"/g, '""')}"`;
-    const expr = aggregation === 'sum' ? `sum(${quoted})` : `count(${quoted})`;
     return this.withTimeout(async () => {
-      const reader = await this.con.runAndReadAll(`SELECT ${expr} AS v FROM (${sql.trim()}) AS sandbox_q`);
+      const reader = await this.con.runAndReadAll(`SELECT sum(${quoted}) AS v FROM (${sql.trim()}) AS sandbox_q`);
       const v = reader.getRowObjectsJson()[0]?.v;
       if (v === null || v === undefined) return null;
       return Number(v);

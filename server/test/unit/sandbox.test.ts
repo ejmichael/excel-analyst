@@ -181,7 +181,7 @@ describe('result caps', () => {
   });
 
   it('sums a column over all rows without the cap (for reconcile)', async () => {
-    const total = await withSandbox(input, (s) => s.aggregateOf('SELECT "store", SUM("net_amount") AS v FROM data GROUP BY 1', 'v', 'sum'));
+    const total = await withSandbox(input, (s) => s.sumOf('SELECT "store", SUM("net_amount") AS v FROM data GROUP BY 1', 'v'));
     expect(total).toBeCloseTo(expected['01_card_sales_semicolon_win1252.csv'].sums.net_amount, 2);
   });
 });
@@ -265,5 +265,35 @@ describe('concurrency', () => {
       SANDBOX_LIMITS.maxWaitMs = saved;
       release?.();
     }
+  });
+});
+
+describe('missing group keys (bug 2026-11-12: grouped count did not reconcile)', () => {
+  // 13 synthetic rows; the last 3 have no value in the grouped column. No real data.
+  const named = ['Manager', 'Manager', 'Clerk', 'Clerk', 'Driver', 'Owner', 'Cashier', 'Baker', 'Chef', 'Cleaner'];
+  const build = async (header: string, keys: Array<string | number>) => {
+    const csv = `Name,${header}\n${keys.map((k, i) => `Person ${i},${k}`).join('\n')}\n`;
+    const p = await profileFile({ buffer: Buffer.from(csv), fileType: 'csv', options: {}, maxRows: 1000 });
+    return { csv: p.normalisedCsv, columns: p.columns };
+  };
+  const variants: Array<[string, string, Array<string | number>]> = [
+    ['empty text', 'Title', [...named, '', '', '']],
+    ['whitespace-only text', 'Title', [...named, ' ', '   ', '"\t"']],
+    ['missing number', 'Branch', [1, 1, 2, 2, 3, 4, 5, 6, 7, 8, '', '', '']],
+  ];
+
+  it.each(variants)('%s: the missing group is its own row with a null key, and the counts add up to 13', async (_name, header, keys) => {
+    const data = await build(header, keys);
+    const key = header.toLowerCase();
+    const sql = `SELECT "${key}" AS "${key}", COUNT(*) AS "contacts" FROM data GROUP BY "${key}" ORDER BY "contacts" DESC, "${key}" LIMIT 50`;
+    await withSandbox(data, async (s) => {
+      expect(await s.scalar('SELECT count(*) FROM data')).toBe(13);
+      const r = await s.query(sql);
+      expect(r.rowCount).toBe(9);
+      expect(r.rows[0]).toEqual({ [key]: null, contacts: 3 });
+      expect(r.rows.reduce((sum, row) => sum + Number(row.contacts), 0)).toBe(13);
+      // The reconcile sum covers the null group too.
+      expect(await s.sumOf(sql, 'contacts')).toBe(13);
+    });
   });
 });

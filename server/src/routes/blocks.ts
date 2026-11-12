@@ -196,6 +196,15 @@ export function csvCell(value: CellValue): string {
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+/**
+ * The export body: header = result column names, one CRLF line per stored row. A NULL cell (for example the group of
+ * rows with no value in the grouped column) is written as an empty cell; the row itself is always kept.
+ */
+export function buildCsv(names: string[], rows: Array<Record<string, CellValue>>): string {
+  const lines = [names.map((n) => csvCell(n)).join(','), ...rows.map((r) => names.map((n) => csvCell(r[n] ?? null)).join(','))];
+  return `${lines.join('\r\n')}\r\n`;
+}
+
 const slug = (s: string) =>
   s
     .normalize('NFKD')
@@ -214,11 +223,9 @@ function sendCsv(res: Response, filename: string, body: string): void {
 blocksRouter.get('/blocks/:id/export.csv', requireUuidParam(), async (req, res) => {
   const { userId, token } = authOf(req);
   const block = await getOwnBlock(supabaseForUser(token), userId, req.params.id as string);
-  const names = block.columns.map((c) => c.name);
-  const lines = [names.map((n) => csvCell(n)).join(','), ...block.rows.map((r) => names.map((n) => csvCell(r[n] ?? null)).join(','))];
   // Date in SAST, like every other date in the app.
   const today = new Date(Date.now() + 2 * 3_600_000).toISOString().slice(0, 10);
-  const body = `${lines.join('\r\n')}\r\n`;
+  const body = buildCsv(block.columns.map((c) => c.name), block.rows);
   // Counted once the file is built (before sending, so the count is in place when the download arrives);
   // a failure to count does not fail the download.
   await recordUsage(userId, 'export', { block_id: block.id, format: 'csv' }).catch(() => undefined);
