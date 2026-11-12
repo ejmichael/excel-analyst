@@ -138,7 +138,7 @@ function failWith(response: Response, payload: unknown): never {
 
 export interface Download {
   blob: Blob;
-  /** From Content-Disposition when the browser can read it, else null. */
+  /** The server's file name from Content-Disposition (exposed by its CORS), or null if the header is missing. */
   filename: string | null;
 }
 

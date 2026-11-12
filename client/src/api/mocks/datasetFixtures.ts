@@ -199,7 +199,7 @@ export const BANK: DatasetTemplate = {
 };
 
 export const AMBIGUOUS_DATES_WARNING =
-  'Every date in “Date” could be read day first or month first. We read them day first (31/10/2026), the usual order in South Africa. If that is wrong, change the date order.';
+  'Every date in this file could be read day-first or month-first. We assumed day-first (dd/mm/yyyy), the South African norm. If that is wrong, choose month-first under "Check how we read your file".';
 
 export const AMBIGUOUS: DatasetTemplate = {
   key: '04',

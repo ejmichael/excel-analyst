@@ -73,7 +73,7 @@ function DatasetView({ dataset, slow }: { dataset: DatasetDetail; slow: boolean 
     <>
       <DatasetHeader dataset={dataset} />
       {(dataset.status === 'profiling' || dataset.status === 'uploading') && <ProfilingState slow={slow} />}
-      {dataset.status === 'failed' && <FailedPanel dataset={dataset} onTryOptions={() => setParseOpen(true)} />}
+      {dataset.status === 'failed' && <FailedPanel dataset={dataset} onCheckReading={() => setParseOpen(true)} />}
       {dataset.status === 'expired' && (
         <div className="flex items-start gap-3 rounded-xl border bg-card p-6">
           <Archive className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
@@ -91,7 +91,7 @@ function DatasetView({ dataset, slow }: { dataset: DatasetDetail; slow: boolean 
   );
 }
 
-function FailedPanel({ dataset, onTryOptions }: { dataset: DatasetDetail; onTryOptions: () => void }) {
+function FailedPanel({ dataset, onCheckReading }: { dataset: DatasetDetail; onCheckReading: () => void }) {
   const me = useMe();
   const [showLimit, setShowLimit] = useState(false);
   // Flow A step 5: a plan-limit failure (max_rows) carries structured details, including the plan that allows it.
@@ -104,7 +104,7 @@ function FailedPanel({ dataset, onTryOptions }: { dataset: DatasetDetail; onTryO
           <h2 className="text-lg font-semibold">We could not read this file</h2>
           <p>{dataset.error_message ?? 'Something in the file stopped us from reading it.'}</p>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={onTryOptions}>Try other options</Button>
+            <Button onClick={onCheckReading}>Check how we read your file</Button>
             {rowLimit && (
               <Button variant="outline" onClick={() => setShowLimit(true)}>
                 About this limit

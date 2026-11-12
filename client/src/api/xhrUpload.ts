@@ -20,8 +20,8 @@ export function xhrUpload(url: string, { form, headers, onProgress, signal }: Up
     });
     xhr.addEventListener('load', () => {
       const responseHeaders = new Headers();
-      // Cross-origin, the browser only exposes headers the server lists in Access-Control-Expose-Headers, and
-      // asking for any other one logs an error. So read Retry-After only when it is actually visible.
+      // The server exposes Retry-After through CORS. Checking the list first keeps the console clean if a deployment
+      // ever stops exposing it (asking the browser for a hidden header logs an error).
       const visible = xhr.getAllResponseHeaders().toLowerCase();
       const retryAfter = /(^|\n)retry-after:/.test(visible) ? xhr.getResponseHeader('Retry-After') : null;
       if (retryAfter) responseHeaders.set('Retry-After', retryAfter);

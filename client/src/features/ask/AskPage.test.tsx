@@ -93,6 +93,20 @@ describe('Ask page', () => {
     expect(box).toHaveValue('Will it rain tomorrow?');
   });
 
+  it('a 429 says how many seconds to wait, from Retry-After', async () => {
+    const { datasetId } = await signInDemo();
+    const transport: Transport = async (url, init) =>
+      url.endsWith('/ask')
+        ? new Response(JSON.stringify({ error: { code: 'rate_limited', message: 'Slow down' } }), {
+            status: 429,
+            headers: { 'Content-Type': 'application/json', 'Retry-After': '30' },
+          })
+        : mockTransport(url, init);
+    renderAt(`/datasets/${datasetId}/ask`, transport);
+    await userEvent.type(await screen.findByLabelText('Your question'), 'Total fees?{Enter}');
+    expect(await screen.findByRole('alert')).toHaveTextContent("You're asking quickly; wait 30 seconds and try again.");
+  });
+
   it('opens the upgrade dialog on the monthly question limit', async () => {
     const { user, datasetId } = await signInDemo();
     user.question_events = Array.from({ length: 20 }, () => new Date().toISOString());

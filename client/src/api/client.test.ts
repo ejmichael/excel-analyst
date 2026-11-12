@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { ApiError, apiFetch, configureApiClient, type Transport } from './client';
+import { ApiError, apiDownload, apiFetch, configureApiClient, type Transport } from './client';
 import { API_BASE } from '@/env';
 
 const json = (status: number, body: unknown) =>
@@ -173,5 +173,43 @@ describe('apiFetch', () => {
     expect(error).toBeInstanceOf(ApiError);
     expect(error.status).toBe(0);
     expect(error.message).toMatch(/could not reach the server/);
+  });
+});
+
+describe('apiDownload uses the server file name', () => {
+  const download = (headers: Record<string, string>) => {
+    configureApiClient({
+      transport: async () => new Response('﻿a,b\r\n1,2\r\n', { status: 200, headers }),
+      getAccessToken: async () => 'token',
+      refreshAccessToken: async () => null,
+    });
+    return apiDownload('/blocks/b1/export.csv');
+  };
+
+  it('reads the name from Content-Disposition in the form the server sends', async () => {
+    const result = await download({ 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="net-sales-by-store-2026-11-12.csv"' });
+    expect(result.filename).toBe('net-sales-by-store-2026-11-12.csv');
+    expect(await result.blob.text()).toContain('a,b');
+  });
+
+  it('also reads the RFC 5987 form (filename*=UTF-8\'\'...)', async () => {
+    const result = await download({ 'Content-Disposition': "attachment; filename*=UTF-8''caf%C3%A9-sales.csv" });
+    expect(result.filename).toBe('café-sales.csv');
+  });
+
+  it('is null only when the header is missing', async () => {
+    expect((await download({ 'Content-Type': 'text/csv' })).filename).toBeNull();
+  });
+
+  it('a failed download is an ordinary ApiError with Retry-After', async () => {
+    const busy = new Response(JSON.stringify({ error: { code: 'rate_limited', message: 'x' } }), {
+      status: 429,
+      headers: { 'Content-Type': 'application/json', 'Retry-After': '20' },
+    });
+    configureApiClient({ transport: async () => busy });
+    const error = (await apiDownload('/blocks/b1/export.csv').catch((e: unknown) => e)) as ApiError;
+    expect(error.code).toBe('rate_limited');
+    expect(error.retryAfterSeconds).toBe(20);
+    expect(error.message).toBe('Too many requests in a short time. Wait 20 seconds and try again.');
   });
 });

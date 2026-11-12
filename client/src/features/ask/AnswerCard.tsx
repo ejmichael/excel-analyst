@@ -26,7 +26,7 @@ export const MAX_FEEDBACK_NOTE = 500;
 /** Downloads the answer's CSV with the token and saves it. The server counts it as an export. */
 export async function downloadAnswerCsv(block: Pick<Block, 'id' | 'title'>): Promise<void> {
   const { blob, filename } = await downloadBlockCsv(block.id);
-  // The server's file name when the browser can read it; otherwise the same pattern, made here.
+  // The server's file name (Content-Disposition); <title>-<date>.csv only if the header is missing.
   saveBlob(blob, filename ?? `${slugify(block.title)}-${isoDateInSast()}.csv`);
 }
 
