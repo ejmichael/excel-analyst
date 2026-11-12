@@ -101,6 +101,21 @@ export function formatValue(
   }
 }
 
+/** How a missing group key reads. The API sends JSON null (the CSV export has an empty cell). */
+export const BLANK_KEY = '(blank)';
+
+/**
+ * A group key (a category, date or number that rows are grouped by) for tables, axes, legends and tooltips:
+ * formatted like any value, but null or empty reads "(blank)" so the group is still visible and named.
+ * Values (the measures) keep using formatValue, where null stays empty.
+ */
+export function formatKey(
+  value: string | number | boolean | null | undefined,
+  format: 'zar' | 'number' | 'integer' | 'percent' | 'date' | 'text',
+): string {
+  return formatValue(value, format) || BLANK_KEY;
+}
+
 /** An ISO timestamp as '2 November 2026, 14:05' in SAST. */
 export function formatDateTime(value: string): string {
   const date = new Date(value);

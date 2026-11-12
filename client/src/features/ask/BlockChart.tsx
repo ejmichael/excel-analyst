@@ -21,7 +21,7 @@ import { BarChart3, Table2 } from 'lucide-react';
 import type { Block, ValueFormat } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { formatNumber, formatValue } from '@/lib/format';
-import { buildChartModel, formatOf, shortLabel, type ChartModel } from './chartData';
+import { buildChartModel, formatOf, groupKeyColumns, shortLabel, type ChartModel } from './chartData';
 import { colourAt, dashAt } from './chartPalette';
 import { ResultTable } from './ResultTable';
 
@@ -67,6 +67,7 @@ function CategoryTick(props: {
 
 export function BlockChart({ block }: { block: Block }) {
   const model = useMemo(() => buildChartModel(block), [block]);
+  const keys = useMemo(() => groupKeyColumns(block), [block]);
   const [asTable, setAsTable] = useState(model.kind === 'table');
   const tableId = useId();
   const rowsShown = block.rows.length;
@@ -81,7 +82,7 @@ export function BlockChart({ block }: { block: Block }) {
 
   const table = (
     <ResultTable
-      columns={block.columns.map((c) => ({ name: c.name, format: formatOf(block, c.name) }))}
+      columns={block.columns.map((c) => ({ name: c.name, format: formatOf(block, c.name), key: keys.has(c.name) }))}
       rows={block.rows.slice(0, 500)}
       label={`Table: ${block.title}, ${rowsText}`}
     />
@@ -127,7 +128,6 @@ function ChartView({ model, ariaLabel }: { model: Exclude<ChartModel, { kind: 'e
 }
 
 function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie' }>; ariaLabel: string }) {
-  const label = (v: string) => formatValue(v, model.labelFormat) || v;
   return (
     <div className="space-y-3">
       <div role="img" aria-label={ariaLabel} className="h-64 w-full">
@@ -156,8 +156,8 @@ function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie
         {model.slices.map((s, i) => (
           <li key={s.name} className="flex items-center gap-2">
             <span className="size-3 shrink-0 rounded-sm" style={{ background: colourAt(i) }} aria-hidden />
-            <span className="min-w-0 flex-1 truncate" title={label(s.label)}>
-              {label(s.label)}
+            <span className="min-w-0 flex-1 truncate" title={s.label}>
+              {s.label}
             </span>
             <span className="tabular font-medium">{formatValue(s.value, model.format)}</span>
           </li>
@@ -169,7 +169,8 @@ function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie
 
 function CartesianView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'cartesian' }>; ariaLabel: string }) {
   const horizontal = model.type === 'bar' && model.orientation === 'horizontal';
-  const data = model.data.map((d) => ({ ...d, xLabel: formatValue(d.x, model.xFormat) || '(blank)' }));
+  // xLabel comes from the model: formatted, and "(blank)" for a missing key.
+  const data = model.data;
   const labelled = data.length * model.series.length <= MAX_LABELLED_VALUES;
   const firstFormat: ValueFormat = model.series[0]?.format ?? 'number';
   const valueTick = (v: number) => formatValue(v, firstFormat);

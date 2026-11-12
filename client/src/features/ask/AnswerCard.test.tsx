@@ -276,3 +276,61 @@ describe('AnswerCard: accessibility', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'View as chart' })).toHaveAttribute('aria-pressed', 'true'));
   });
 });
+
+describe('AnswerCard: a null group key reads "(blank)"', () => {
+  const keyCases = [
+    { name: 'text', column: { name: 'store', format: 'text' as const }, value: 'A' },
+    { name: 'numeric', column: { name: 'terminal_no', format: 'integer' as const }, value: 7 },
+    { name: 'date', column: { name: 'day', format: 'date' as const }, value: '2026-10-01' },
+  ];
+
+  for (const { name, column, value } of keyCases) {
+    it(`${name} key: "(blank)" in the table view, while a null value stays empty`, async () => {
+      renderCard(
+        baseBlock({
+          columns: [column, { name: 'net', format: 'zar' }],
+          rows: [
+            { [column.name]: value, net: null },
+            { [column.name]: null, net: 50 },
+          ],
+          chart: { type: 'bar', x: column.name, y: ['net'], series: null, orientation: 'vertical', stacked: false, value_format: { [column.name]: column.format, net: 'zar' } },
+        }),
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'View as table' }));
+      const rows = within(screen.getByRole('region', { name: /^Table:/ })).getAllByRole('row');
+      const cells = (i: number) => within(rows[i]!).getAllByRole('cell').map((c) => c.textContent);
+      expect(cells(1)[1]).toBe(''); // a null value: empty, not "(blank)"
+      expect(cells(2)[0]).toBe('(blank)'); // a null key
+    });
+  }
+
+  it('a plain table shows "(blank)" in its text and date key columns', () => {
+    renderCard(
+      baseBlock({
+        columns: [
+          { name: 'store', format: 'text' },
+          { name: 'day', format: 'date' },
+          { name: 'net', format: 'zar' },
+        ],
+        rows: [{ store: null, day: null, net: null }],
+        chart: { type: 'table', x: null, y: [], series: null, orientation: 'vertical', stacked: false, value_format: { day: 'date', net: 'zar' } },
+      }),
+    );
+    const cells = within(screen.getByRole('region', { name: /^Table:/ })).getAllByRole('cell').map((c) => c.textContent);
+    expect(cells).toEqual(['(blank)', '(blank)', '']);
+  });
+
+  it('pie labels written beside the chart show "(blank)"', () => {
+    renderCard(
+      baseBlock({
+        columns: [{ name: 'card', format: 'text' }, { name: 'net', format: 'zar' }],
+        rows: [
+          { card: 'DEBIT', net: 5 },
+          { card: null, net: 2 },
+        ],
+        chart: { type: 'pie', x: 'card', y: ['net'], series: null, orientation: 'vertical', stacked: false, value_format: { net: 'zar' } },
+      }),
+    );
+    expect(screen.getByText('(blank)')).toBeInTheDocument();
+  });
+});

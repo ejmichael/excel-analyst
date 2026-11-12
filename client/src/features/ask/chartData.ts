@@ -1,5 +1,5 @@
 import type { Block, CellValue, ChartType, ValueFormat } from '@/api/types';
-import { toNumeric } from '@/lib/format';
+import { formatKey, toNumeric } from '@/lib/format';
 
 /**
  * Turns a Block into what a chart needs, using only Block.rows, Block.columns and Block.chart.
@@ -39,8 +39,11 @@ export type ChartModel =
       xColumn: string;
       xFormat: ValueFormat;
       series: SeriesDef[];
-      /** One point per x value, in the order the API returned them. `x` holds the raw x value. */
-      data: Array<{ x: CellValue } & Record<string, number | null | CellValue>>;
+      /**
+       * One point per x value, in the order the API returned them. `x` is the raw value; `xLabel` its display text
+       * for the axis and tooltip (a null key reads "(blank)").
+       */
+      data: Array<{ x: CellValue; xLabel: string } & Record<string, number | null | CellValue>>;
     };
 
 /** 'total_net' -> 'Total net'. Text only. */
@@ -54,7 +57,24 @@ export function formatOf(block: Pick<Block, 'chart' | 'columns'>, column: string
   return block.chart.value_format[column] ?? block.columns.find((c) => c.name === column)?.format ?? 'text';
 }
 
-const key = (value: CellValue): string => (value === null ? '(blank)' : String(value));
+/** Identity of a group key for grouping and series keys. Null and empty share one identity, distinct from any text. */
+const key = (value: CellValue): string => (value === null || value === '' ? '__blank__' : `v:${String(value)}`);
+
+/**
+ * The result columns that are group keys (shown as "(blank)" when null): the chart's x and series, and every
+ * column that is not a value column. In a plain table with no value columns, the text and date columns.
+ */
+export function groupKeyColumns(block: Pick<Block, 'chart' | 'columns'>): Set<string> {
+  const keys = new Set<string>();
+  const { x, y, series } = block.chart;
+  if (x) keys.add(x);
+  if (series) keys.add(series);
+  for (const c of block.columns) {
+    const format = formatOf(block, c.name);
+    if (y.length > 0 ? !y.includes(c.name) : format === 'text' || format === 'date') keys.add(c.name);
+  }
+  return keys;
+}
 
 export function buildChartModel(block: Pick<Block, 'chart' | 'columns' | 'rows'>): ChartModel {
   const rows = block.rows.slice(0, MAX_CHART_ROWS);
@@ -79,16 +99,18 @@ export function buildChartModel(block: Pick<Block, 'chart' | 'columns' | 'rows'>
   const valueColumn = y[0];
   if (!x || !valueColumn) return { kind: 'table' };
 
+  const xFormat = formatOf(block, x);
+
   if (chart.type === 'pie') {
     return {
       kind: 'pie',
       labelColumn: x,
       valueColumn,
-      labelFormat: formatOf(block, x),
+      labelFormat: xFormat,
       format: formatOf(block, valueColumn),
-      slices: rows.map((row) => ({
-        name: key(row[x] ?? null),
-        label: key(row[x] ?? null),
+      slices: rows.map((row, i) => ({
+        name: `p${i}`,
+        label: formatKey(row[x] ?? null, xFormat),
         value: toNumeric(row[valueColumn]),
       })),
     };
@@ -107,34 +129,37 @@ export function buildChartModel(block: Pick<Block, 'chart' | 'columns' | 'rows'>
   let series: SeriesDef[];
   let point: (row: Record<string, CellValue>) => Array<[string, number | null]>;
 
+  // Series keys are plain indexes: data values can contain dots, which Recharts would read as a nested path.
   if (seriesColumn) {
-    const seriesValues: string[] = [];
+    const seriesFormat = formatOf(block, seriesColumn);
+    const seriesIndex = new Map<string, number>();
+    const seriesLabels: string[] = [];
     for (const row of rows) {
       const s = key(row[seriesColumn] ?? null);
-      if (!seriesValues.includes(s)) seriesValues.push(s);
+      if (!seriesIndex.has(s)) {
+        seriesIndex.set(s, seriesLabels.length);
+        seriesLabels.push(formatKey(row[seriesColumn] ?? null, seriesFormat));
+      }
     }
-    series = y.flatMap((column) =>
-      seriesValues.map((s) => ({
-        key: y.length > 1 ? `${column}::${s}` : `s::${s}`,
-        label: y.length > 1 ? `${s} · ${columnLabel(column)}` : s,
+    series = y.flatMap((column, ci) =>
+      seriesLabels.map((label, si) => ({
+        key: `s${ci}_${si}`,
+        label: y.length > 1 ? `${label} · ${columnLabel(column)}` : label,
         column,
         format: formatOf(block, column),
       })),
     );
     point = (row) =>
-      y.map((column) => [
-        y.length > 1 ? `${column}::${key(row[seriesColumn] ?? null)}` : `s::${key(row[seriesColumn] ?? null)}`,
-        toNumeric(row[column]),
-      ]);
+      y.map((column, ci) => [`s${ci}_${seriesIndex.get(key(row[seriesColumn] ?? null))}`, toNumeric(row[column])]);
   } else {
-    series = y.map((column) => ({ key: `y::${column}`, label: columnLabel(column), column, format: formatOf(block, column) }));
-    point = (row) => y.map((column) => [`y::${column}`, toNumeric(row[column])]);
+    series = y.map((column, ci) => ({ key: `v${ci}`, label: columnLabel(column), column, format: formatOf(block, column) }));
+    point = (row) => y.map((column, ci) => [`v${ci}`, toNumeric(row[column])]);
   }
 
-  const byX = new Map<string, { x: CellValue } & Record<string, number | null | CellValue>>();
+  const byX = new Map<string, { x: CellValue; xLabel: string } & Record<string, number | null | CellValue>>();
   for (const value of xs) {
     // Every series starts as a gap; only values the API returned fill it.
-    byX.set(key(value), { x: value, ...Object.fromEntries(series.map((s) => [s.key, null])) });
+    byX.set(key(value), { x: value, xLabel: formatKey(value, xFormat), ...Object.fromEntries(series.map((s) => [s.key, null])) });
   }
   for (const row of rows) {
     const target = byX.get(key(row[x] ?? null));
@@ -148,7 +173,7 @@ export function buildChartModel(block: Pick<Block, 'chart' | 'columns' | 'rows'>
     orientation: chart.orientation,
     stacked: chart.stacked,
     xColumn: x,
-    xFormat: formatOf(block, x),
+    xFormat,
     series,
     data: xs.map((value) => byX.get(key(value))!),
   };

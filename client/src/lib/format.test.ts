@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatCell, formatDate, formatNumber, formatPercent, formatValue, formatZar } from './format';
+import { formatBytes, formatCell, formatDate, formatKey, formatNumber, formatPercent, formatValue, formatZar } from './format';
 
 describe('formatZar', () => {
   it('uses the en-ZA rand format', () => {
@@ -92,5 +92,21 @@ describe('formatValue (every ValueFormat, en-ZA, through Intl)', () => {
 
   it('a non-numeric value in a number column is shown as is, never as a made-up number', () => {
     expect(formatValue('n/a', 'zar')).toBe('n/a');
+  });
+});
+
+describe('formatKey (group keys)', () => {
+  it('formats like a value, but null or empty reads "(blank)"', () => {
+    expect(formatKey('Café', 'text')).toBe('Café');
+    expect(formatKey(1002, 'integer')).toBe(new Intl.NumberFormat('en-ZA').format(1002));
+    expect(formatKey('2026-10-01', 'date')).toBe('1 October 2026');
+    for (const f of ['text', 'integer', 'number', 'zar', 'percent', 'date'] as const) {
+      expect(formatKey(null, f)).toBe('(blank)');
+      expect(formatKey('', f)).toBe('(blank)');
+    }
+  });
+
+  it('keeps zero as a real key, not blank', () => {
+    expect(formatKey(0, 'integer')).toBe('0');
   });
 });

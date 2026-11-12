@@ -1,12 +1,13 @@
 import type { CellValue, ValueFormat } from '@/api/types';
-import { formatValue } from '@/lib/format';
+import { formatKey, formatValue } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { columnLabel } from './chartData';
 
 const RIGHT_ALIGNED = new Set<ValueFormat>(['zar', 'number', 'integer', 'percent']);
 
 interface ResultTableProps {
-  columns: Array<{ name: string; format: ValueFormat; label?: string }>;
+  /** `key`: a group-key column, where null reads "(blank)"; in value columns null stays empty. */
+  columns: Array<{ name: string; format: ValueFormat; label?: string; key?: boolean }>;
   rows: Array<Record<string, CellValue>>;
   label: string;
   caption?: string;
@@ -40,7 +41,7 @@ export function ResultTable({ columns, rows, label, caption }: ResultTableProps)
               <tr key={i} className="border-b last:border-b-0">
                 {columns.map((c) => (
                   <td key={c.name} className={cn('px-3 py-2 whitespace-nowrap', RIGHT_ALIGNED.has(c.format) && 'text-right')}>
-                    {formatValue(row[c.name] ?? null, c.format)}
+                    {c.key ? formatKey(row[c.name] ?? null, c.format) : formatValue(row[c.name] ?? null, c.format)}
                   </td>
                 ))}
               </tr>
