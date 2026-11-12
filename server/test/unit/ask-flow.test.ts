@@ -281,8 +281,70 @@ describe('ask: reconcile and truncation', () => {
       // The blank group is kept as its own row with a null key, in the stored rows.
       expect(r.block.row_count).toBe(9);
       expect(r.block.rows[0]).toEqual({ title: null, contacts: 3 });
-      expect(r.block.narrative).toBe('(no value) has 3 contacts.');
+      expect(r.block.narrative).toBe('(blank) has 3 contacts.');
     }
+  });
+
+  describe('reconcile guard in the flow (user decision 2026-11-13)', () => {
+    // 13 synthetic orders, 3 with no store; 9 paid.
+    const stores = ['North', 'North', 'South', 'South', 'South', 'East', 'East', 'West', 'West', 'West', '', '', ''];
+    let orders: AskInput;
+    beforeAll(async () => {
+      const csv = `Store,Customer,Amount,Paid\n${stores.map((s, i) => `${s},C${i % 5},${(i + 1) * 10}.50,${i % 3 === 0 ? 'no' : 'yes'}`).join('\n')}\n`;
+      const p = await profileFile({ buffer: Buffer.from(csv), fileType: 'csv', options: {}, maxRows: 1000 });
+      orders = { ...input, datasetName: 'Orders', rowCount: p.rowCount, columns: p.columns.map((c) => ({ ...c, display_name: null, vat_included: null })), csv: p.normalisedCsv };
+    });
+    const planFor = (sql: string, y: string, format: 'integer' | 'zar' | 'number', reconcile: unknown) =>
+      goodPlan({
+        sql,
+        source_filter_sql: null,
+        chart: { type: 'bar', x: 'store', y: [y], series: null, orientation: 'vertical', stacked: false, value_format: { store: 'text', [y]: format } },
+        reconcile,
+      });
+
+    it('a COUNT(DISTINCT) breakdown: the planned reconcile is discarded, no check, not flagged, reason returned', async () => {
+      const plan = planFor('SELECT "store", COUNT(DISTINCT "customer") AS customers FROM data GROUP BY 1 ORDER BY 2 DESC', 'customers', 'integer', {
+        column: 'customers',
+        aggregation: 'count',
+        total_sql: 'SELECT COUNT(DISTINCT "customer") FROM data',
+      });
+      const { client } = fakeLlm({ plan_analysis: [plan], write_narrative: [{ narrative_template: '{{r0.store}} has {{r0.customers}} customers.', follow_ups: [] }] });
+      const r = await ask(orders, { llm: client, recordLlm });
+      if (r.kind !== 'answered') throw new Error('expected an answer');
+      expect(r.reconcileSkipped).toBe('count_distinct');
+      expect(r.block.checks.some((c) => c.type === 'total_reconciles')).toBe(false);
+      expect(r.block.reconcile).toBeNull();
+      expect(r.block.status).toBe('ok');
+    });
+
+    it('a sum by group with a WHERE filter in total_sql and a null group key reconciles', async () => {
+      const plan = planFor('SELECT "store", ROUND(SUM("amount"), 2) AS paid_total FROM data WHERE "paid" GROUP BY 1 ORDER BY 2 DESC', 'paid_total', 'zar', {
+        column: 'paid_total',
+        aggregation: 'sum',
+        total_sql: 'SELECT ROUND(SUM("amount"), 2) FROM data WHERE "paid"',
+      });
+      const { client } = fakeLlm({ plan_analysis: [plan], write_narrative: [{ narrative_template: '{{r0.store}} took {{r0.paid_total}}.', follow_ups: [] }] });
+      const r = await ask(orders, { llm: client, recordLlm });
+      if (r.kind !== 'answered') throw new Error('expected an answer');
+      const paidTotal = stores.reduce((s, _store, i) => (i % 3 === 0 ? s : s + (i + 1) * 10 + 0.5), 0);
+      expect(r.reconcileSkipped).toBeNull();
+      expect(r.block.rows.some((row) => row.store === null)).toBe(true);
+      expect(r.block.checks.find((c) => c.type === 'total_reconciles')).toMatchObject({ ok: true, expected: paidTotal, actual: paidTotal });
+      expect(r.block.status).toBe('ok');
+    });
+
+    it('a sum by group whose total_sql forgets the filter is still a real discrepancy (flagged)', async () => {
+      const plan = planFor('SELECT "store", SUM("amount") AS paid_total FROM data WHERE "paid" GROUP BY 1', 'paid_total', 'zar', {
+        column: 'paid_total',
+        aggregation: 'sum',
+        total_sql: 'SELECT SUM("amount") FROM data',
+      });
+      const { client } = fakeLlm({ plan_analysis: [plan], write_narrative: [{ narrative_template: '{{r0.store}} took {{r0.paid_total}}.', follow_ups: [] }] });
+      const r = await ask(orders, { llm: client, recordLlm });
+      if (r.kind !== 'answered') throw new Error('expected an answer');
+      expect(r.block.checks.find((c) => c.type === 'total_reconciles')).toMatchObject({ ok: false });
+      expect(r.block.status).toBe('flagged');
+    });
   });
 
   it('more than 500 result rows: 500 stored, true count kept, flagged, narrator told', async () => {

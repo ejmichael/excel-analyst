@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_VALUE, formatValue, freeStandingNumbers, MAX_TOKENS, renderNarrative, stripCurrencyAroundZarTokens, UNRESOLVED } from '../../src/services/analysis/tokens.js';
+import { EMPTY_TEXT, EMPTY_VALUE, formatValue, freeStandingNumbers, MAX_TOKENS, renderNarrative, stripCurrencyAroundZarTokens, UNRESOLVED } from '../../src/services/analysis/tokens.js';
 
 // Intl en-ZA output uses no-break spaces as group separators; compare with them normalised.
 const norm = (s: string) => s.replace(/[  ]/g, ' ');
@@ -21,6 +21,9 @@ describe('formatValue (en-ZA, Intl)', () => {
     expect(formatValue('2026-10-01T07:00:00', 'date')).toBe('1 October 2026');
     expect(formatValue('Café', 'text')).toBe('Café');
     expect(formatValue(null, 'zar')).toBe(EMPTY_VALUE);
+    for (const f of ['number', 'integer', 'percent', 'date'] as const) expect(formatValue(null, f)).toBe('(no value)');
+    expect(formatValue(null, 'text')).toBe('(blank)');
+    expect(EMPTY_TEXT).toBe('(blank)');
   });
 
   it('refuses values that cannot be shown in the format', () => {

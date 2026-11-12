@@ -7,6 +7,7 @@ import { PLAN_ANALYSIS_TOOL, type Plan, PLANNER_MAX_TOKENS, PLANNER_SYSTEM, plan
 import type { BlockCheck, BlockSource, CellValue, ChartSpec, ChartType, ResultColumn } from '../../types/api.js';
 import { type QueryResult, SandboxError, type SandboxErrorCategory, type SandboxSession, withSandbox } from '../sandbox/sandbox.js';
 import { buildNarratorUser, buildPlannerUser, MAX_SAMPLE_ROWS, type PromptColumn } from './prompts.js';
+import { type ReconcileSkipReason, reconcileSkipReason } from './reconcileGuard.js';
 import { renderNarrative, type RenderResult } from './tokens.js';
 
 /**
@@ -60,7 +61,13 @@ export interface BlockDraft {
   model: string;
 }
 
-export type AskResult = { kind: 'answered'; block: BlockDraft } | { kind: 'cannot_answer'; message: string };
+/**
+ * `reconcileSkipped`: why a planned reconcile was discarded (the block then has no total_reconciles check), as a fixed
+ * category for usage_events meta; null when there was none to discard.
+ */
+export type AskResult =
+  | { kind: 'answered'; block: BlockDraft; reconcileSkipped: ReconcileSkipReason | null }
+  | { kind: 'cannot_answer'; message: string };
 
 /** A model call failed (after the client's own retries): the route answers 502 llm_failed and saves nothing. */
 export class AskLlmFailure extends Error {
@@ -151,8 +158,9 @@ async function reconcileCheck(session: SandboxSession, sql: string, reconcile: N
       type: 'total_reconciles',
       ok,
       label: ok ? label : `Total of ${humanise(reconcile.column)} does not match your file`,
-      expected,
-      actual,
+      // Stored without floating-point noise (287418.5299999999 -> 287418.53); the comparison above uses the raw values.
+      expected: Math.round(expected * 1e6) / 1e6,
+      actual: Math.round(actual * 1e6) / 1e6,
     };
   } catch (err) {
     // A failing check query is a visible failed check, never skipped.
@@ -221,11 +229,20 @@ export async function ask(input: AskInput, deps: AskDeps): Promise<AskResult> {
     }
     if ('cannot' in evaluation) return evaluation;
     if (!evaluation.ok) return { cannot: CANNOT_BUILD_QUERY };
-    const reconcile = evaluation.plan.reconcile ? await reconcileCheck(session, evaluation.plan.sql, evaluation.plan.reconcile) : null;
-    return { ...evaluation, reconcile };
+    const planned = evaluation.plan.reconcile;
+    if (!planned) return { ...evaluation, reconcile: null, reconcileSkipped: null };
+    // A reconcile over a column that cannot be added up across groups would be a false alarm: discard it, run no check.
+    const skipped = reconcileSkipReason({
+      tree: await session.parseTree(evaluation.plan.sql),
+      column: planned.column,
+      valueFormat: evaluation.plan.chart.value_format,
+      rowCount: evaluation.result.rowCount,
+    });
+    if (skipped) return { ...evaluation, plan: { ...evaluation.plan, reconcile: null }, reconcile: null, reconcileSkipped: skipped };
+    return { ...evaluation, reconcile: await reconcileCheck(session, evaluation.plan.sql, planned), reconcileSkipped: null };
   });
   if ('cannot' in evaluated) return { kind: 'cannot_answer', message: evaluated.cannot };
-  const { plan, result, reconcile } = evaluated;
+  const { plan, result, reconcile, reconcileSkipped } = evaluated;
 
   // ----- narrate (one retry) -----
   const truncated = result.rowCount > STORED_ROWS;
@@ -295,6 +312,7 @@ export async function ask(input: AskInput, deps: AskDeps): Promise<AskResult> {
 
   return {
     kind: 'answered',
+    reconcileSkipped,
     block: {
       question: input.question,
       title: plan.title.trim(),

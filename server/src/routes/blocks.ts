@@ -78,7 +78,13 @@ blocksRouter.post('/datasets/:id/ask', askRateLimit, requireUuidParam(), validat
     .single<BlockRow>();
   throwIfDbError('blocks: insert', error);
   // Counted only once the block is saved.
-  await recordUsage(userId, 'question', { block_id: row!.id, dataset_id: datasetId, flagged: row!.status === 'flagged' });
+  await recordUsage(userId, 'question', {
+    block_id: row!.id,
+    dataset_id: datasetId,
+    flagged: row!.status === 'flagged',
+    // Why a planned reconcile was discarded (a category, never SQL), or null.
+    reconcile_skipped: outcome.reconcileSkipped,
+  });
   ok(res, toBlock(row!), 201);
 });
 

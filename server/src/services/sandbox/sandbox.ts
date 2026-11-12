@@ -156,6 +156,12 @@ export class SandboxSession {
     }
   }
 
+  /** DuckDB's parse tree (json_serialize_sql) of a query that has already been validated; nothing is run. */
+  async parseTree(sql: string): Promise<unknown> {
+    const reader = await this.con.runAndReadAll('SELECT json_serialize_sql($1::VARCHAR) AS s', [sql]);
+    return JSON.parse(String(reader.getRowObjectsJson()[0]?.s));
+  }
+
   /**
    * Validates and runs one SELECT. Returns at most `maxRows` rows (capped while executing) and the true row count.
    * `params` bind to $1, $2, ... in the query.

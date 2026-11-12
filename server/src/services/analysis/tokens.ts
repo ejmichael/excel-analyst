@@ -20,12 +20,16 @@ const number = new Intl.NumberFormat('en-ZA', { maximumFractionDigits: 2 });
 const percent = new Intl.NumberFormat('en-ZA', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const date = new Intl.DateTimeFormat('en-ZA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
-/** Shown for an empty (NULL) cell: it resolved, there is simply no value. */
+/**
+ * Shown for an empty (NULL) cell: it resolved, there is simply no value. A text cell (usually a group label, such as
+ * the group of rows with no job title) reads "(blank)", as the client shows it; every other format reads "(no value)".
+ */
 export const EMPTY_VALUE = '(no value)';
+export const EMPTY_TEXT = '(blank)';
 
 /** Formats one cell, or returns null if the value cannot be shown in that format. */
 export function formatValue(value: CellValue, format: ValueFormat): string | null {
-  if (value === null) return EMPTY_VALUE;
+  if (value === null) return format === 'text' ? EMPTY_TEXT : EMPTY_VALUE;
   if (format === 'text') return String(value);
   if (format === 'date') {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));

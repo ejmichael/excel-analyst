@@ -23,11 +23,17 @@ export interface LocalAnswer {
 }
 
 const profiles = new Map<string, ProfileResult>();
+const synthetic = new Map<string, Buffer>();
+
+/** A file built in the test (synthetic data, never real), asked about by name like a fixture. */
+export function addSyntheticFile(name: string, buffer: Buffer): void {
+  synthetic.set(name, buffer);
+}
 
 export async function profileFixture(fixture: string): Promise<ProfileResult> {
   const cached = profiles.get(fixture);
   if (cached) return cached;
-  const buffer = readFileSync(new URL(`../../../fixtures/${fixture}`, import.meta.url));
+  const buffer = synthetic.get(fixture) ?? readFileSync(new URL(`../../../fixtures/${fixture}`, import.meta.url));
   const p = await profileFile({ buffer, fileType: 'csv', options: {}, maxRows: 1_000_000 });
   profiles.set(fixture, p);
   return p;
@@ -82,6 +88,12 @@ export function describeAnswer(question: string, a: LocalAnswer): string {
   if (a.result.kind === 'llm_failed') return [...lines, `RESULT: llm_failed (${a.result.purpose})`].join('\n');
   if (a.result.kind === 'cannot_answer') return [...lines, `RESULT: cannot_answer: ${a.result.message}`].join('\n');
   const b = a.result.block;
+  const rec = b.checks.find((c) => c.type === 'total_reconciles');
+  if (a.result.reconcileSkipped) lines.push(`reconcile: planned, discarded (${a.result.reconcileSkipped}), no check`);
+  else if (b.reconcile && rec) {
+    const outcome = rec.ok ? 'ok' : `FAILED (${rec.label})`;
+    lines.push(`reconcile: planned (${b.reconcile.aggregation} of ${b.reconcile.column}; total_sql: ${b.reconcile.total_sql}) expected ${rec.expected ?? '-'} actual ${rec.actual ?? '-'} ${outcome}`);
+  } else lines.push('reconcile: none planned');
   lines.push(`title: ${b.title}   status: ${b.status}   rows: ${b.row_count}${b.truncated ? ' (truncated)' : ''}`);
   lines.push(`sql: ${b.sql}`);
   if (b.source_filter_sql) lines.push(`source filter: ${b.source_filter_sql}`);

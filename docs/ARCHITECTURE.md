@@ -42,8 +42,11 @@ marks any dataset left in `profiling` and any run left in `running` as `failed` 
    error message (not data) and asks for a corrected query. If the repair fails, return 422 `cannot_answer`.
 3. **Execute** in the sandbox. Keep at most 500 result rows in the database (`row_count` = true count, `truncated` = true if cut).
 4. **Reconcile (optional).** If `reconcile` is present, the server runs `reconcile.total_sql` on the full table and compares it with
-   the sum (or count) of the matching result column over **all** result rows (run the main SQL again without the 500-row cap
-   for this check). Tolerance: absolute difference below 0.005. Record a `total_reconciles` check with expected and actual.
+   the sum of the values of the breakdown column (`reconcile.column`) over **all** result rows (run the main SQL again without the
+   500-row cap for this check). It is a sum for both `sum` and `count` aggregations; for `count`, the total is the number of rows
+   counted by `total_sql`. Tolerance: absolute difference below 0.005. Record a `total_reconciles` check with expected and actual.
+   The planned reconcile is discarded, and no check is recorded, when the breakdown column does not come from a plain SUM or
+   COUNT over disjoint groups (for example COUNT(DISTINCT ...), AVG, MIN, MAX, a ratio or a percentage).
 5. **Narrate (Haiku, forced tool call `write_narrative`).** Input: question, title, result column names and formats, the first 50
    result rows with PII columns masked, row_count. Output: `narrative_template` (two to four sentences) and up to three `follow_ups`.
    Numbers in the template must be tokens like `{{r0.revenue}}`, `{{rows}}`. No arithmetic, no percentages written by the model.
