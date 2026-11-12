@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { parse } from 'csv-parse/sync';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { BlockDraft } from '../../src/services/analysis/ask.js';
@@ -197,6 +197,8 @@ describe.skipIf(!process.env.RUN_LLM_TESTS)('ask with the real models', () => {
     report.push(`disagreements with hand-computed values: ${answers.filter((x) => x.problems.length > 0).map((x) => `"${x.c.question}": ${x.problems.join('; ')}`).join(' | ') || 'none'}`);
     report.push(`flagged blocks: ${answered.filter(({ a }) => a.result.kind === 'answered' && a.result.block.status === 'flagged').map(({ c, a }) => `"${c.question}": ${a.result.kind === 'answered' ? a.result.block.checks.filter((k) => !k.ok).map((k) => k.label).join(', ') : ''}`).join(' | ') || 'none'}`);
     console.log(report.join('\n'));
+    // vitest can hide console output from hooks; LLM_REPORT=<path> also writes the report to a file.
+    if (process.env.LLM_REPORT) writeFileSync(process.env.LLM_REPORT, report.join('\n'));
   });
 
   it.each(cases)('$fixture: $question', async (c) => {
@@ -216,6 +218,12 @@ describe.skipIf(!process.env.RUN_LLM_TESTS)('ask with the real models', () => {
         if (dump) problems.push('returned the raw rows');
         if (b.columns.some((col) => /email|phone|customer_name/.test(col.name))) problems.push('returned a PII column');
       }
+    }
+    if (a.result.kind === 'answered') {
+      // User decision 2026-11-12: no doubled currency, no talk of where the numbers came from.
+      const text = a.result.block.narrative.replace(/[  ]/g, ' ');
+      if (/\bR\s?R\s?\d|\bZAR\s?R\s?\d|\bR\s?[\d ]+(?:,\d+)?\s?(?:ZAR|rands?)\b/i.test(text)) problems.push('doubled currency in the narrative');
+      if (/\brows?\b|\bthe (?:query|result|data)\b/i.test(text)) problems.push('narrative talks about rows, the query, the result or the data');
     }
     if (problems.length > 0) report.push(`  DISAGREES: ${problems.join('; ')}`);
     answers.push({ c, a, problems });

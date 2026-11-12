@@ -12,6 +12,8 @@ export interface LocalCall {
   usage: LlmUsage;
   ms: number;
   error?: string;
+  /** Logged category for a repair or narrator retry. */
+  reason?: string;
 }
 
 export interface LocalAnswer {
@@ -50,7 +52,13 @@ export async function localAsk(fixture: string, question: string): Promise<Local
       {
         llm: llm(),
         recordLlm: async (purpose, usage, meta) => {
-          calls.push({ purpose, usage, ms: Number(meta.ms ?? 0), ...(meta.error ? { error: String(meta.error) } : {}) });
+          calls.push({
+            purpose,
+            usage,
+            ms: Number(meta.ms ?? 0),
+            ...(meta.error ? { error: String(meta.error) } : {}),
+            ...(meta.reason || meta.reasons ? { reason: String(meta.reason ?? meta.reasons) } : {}),
+          });
         },
       },
     );
@@ -68,7 +76,7 @@ export function describeAnswer(question: string, a: LocalAnswer): string {
   const lines = [`\n### ${question}`, `latency: ${a.ms} ms`];
   for (const c of a.calls) {
     lines.push(
-      `  ${c.purpose.padEnd(7)} ${c.usage.model}  in ${c.usage.inputTokens} / out ${c.usage.outputTokens}  $${c.usage.costUsd?.toFixed(6) ?? '?'}  ${c.ms} ms${c.error ? `  ERROR ${c.error}` : ''}`,
+      `  ${c.purpose.padEnd(7)} ${c.usage.model}  in ${c.usage.inputTokens} / out ${c.usage.outputTokens}  $${c.usage.costUsd?.toFixed(6) ?? '?'}  ${c.ms} ms${c.error ? `  ERROR ${c.error}` : ''}${c.reason ? `  reason: ${c.reason}` : ''}`,
     );
   }
   if (a.result.kind === 'llm_failed') return [...lines, `RESULT: llm_failed (${a.result.purpose})`].join('\n');
