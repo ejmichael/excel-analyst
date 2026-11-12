@@ -8,7 +8,7 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 |---|---|---|---|
 | S0 | Foundation, auth, consent, workspaces, me | DONE | DONE |
 | S1 | Upload, parse, profile, preview | DONE | DONE (tested against the real server) |
-| S2 | Ask, verify, source rows | DONE | TODO |
+| S2 | Ask, verify, source rows | DONE | DONE (tested against the real server) |
 | S3 | Reports and branding | TODO | TODO |
 | S4 | Export and share | TODO | TODO |
 | S5 | Templates and re-runs | TODO | TODO |

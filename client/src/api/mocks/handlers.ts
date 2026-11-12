@@ -2,7 +2,8 @@ import { z } from 'zod';
 import type { ApiError, ErrorCode, PlanLimitDetails, Workspace } from '../types';
 import type { Transport, UploadTransport } from '../client';
 import { buildMe, cheapestPlanAllowing, sastTimestamp, type MockUser } from './data';
-import { handleUpload, routeDatasets } from './datasets';
+import { routeBlocks } from './blocks';
+import { datasetSnapshot, handleUpload, routeDatasets } from './datasets';
 import { mockStore } from './store';
 
 /**
@@ -167,6 +168,14 @@ export const mockTransport: Transport = async (url, init) => {
     } catch {
       return fail(422, 'validation_failed', 'The request body is not valid JSON.');
     }
+  }
+
+  if (/^\/(datasets\/[^/]+\/(ask|blocks)$|blocks\/)/.test(path)) {
+    if (!user.popia_consent_at) return fail(403, 'consent_required', 'Accept the terms and privacy notice first.');
+    const result = await routeBlocks(method, parsedUrl, user, body, (id) => datasetSnapshot(user, id), latencyMs);
+    mockStore.save();
+    if (result?.raw) return result.raw;
+    if (result) return new Response(JSON.stringify(result.body), { status: result.status, headers: { 'Content-Type': 'application/json', ...result.headers } });
   }
 
   if (path.startsWith('/datasets')) {

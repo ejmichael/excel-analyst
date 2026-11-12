@@ -100,18 +100,20 @@ async function guarded(send: () => Promise<Response>): Promise<Response> {
   }
 }
 
+/** Token, then one refresh-and-retry on 401 (expired tokens get 401 too). Returns the final response. */
+async function sendAuthorised(send: (headers: Record<string, string>) => Promise<Response>): Promise<Response> {
+  const response = await guarded(async () => send(authHeaders(await config.getAccessToken())));
+  if (response.status !== 401) return response;
+  const refreshed = await config.refreshAccessToken().catch(() => null);
+  return refreshed ? guarded(() => send(authHeaders(refreshed))) : response;
+}
+
 /**
- * The shared request cycle: token, one refresh-and-retry on 401 (expired tokens get 401 too),
- * unwrap { data }, or throw ApiError and fire the global 401 / consent_required handlers.
+ * The shared request cycle: sendAuthorised, then unwrap { data }, or throw ApiError and fire the global
+ * 401 / consent_required handlers.
  */
 async function authorised<T>(send: (headers: Record<string, string>) => Promise<Response>): Promise<T> {
-  let response = await guarded(async () => send(authHeaders(await config.getAccessToken())));
-
-  if (response.status === 401) {
-    const refreshed = await config.refreshAccessToken().catch(() => null);
-    if (refreshed) response = await guarded(() => send(authHeaders(refreshed)));
-  }
-
+  const response = await sendAuthorised(send);
   const payload: unknown = await response.json().catch(() => null);
 
   if (response.ok) {
@@ -120,7 +122,11 @@ async function authorised<T>(send: (headers: Record<string, string>) => Promise<
     }
     throw new ApiError(response.status, 'internal', ERROR_MESSAGES.internal);
   }
+  return failWith(response, payload);
+}
 
+/** Throws the ApiError for a failed response and fires the global handlers. */
+function failWith(response: Response, payload: unknown): never {
   const retryAfter = Number(response.headers.get('Retry-After'));
   const error = toApiError(response.status, payload, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null);
   // Only a 401 means the session is gone. 500, 429 and every other status are ordinary errors: the user stays
@@ -128,6 +134,26 @@ async function authorised<T>(send: (headers: Record<string, string>) => Promise<
   if (error.status === 401) config.onUnauthorized();
   else if (error.code === 'consent_required') config.onConsentRequired();
   throw error;
+}
+
+export interface Download {
+  blob: Blob;
+  /** From Content-Disposition when the browser can read it, else null. */
+  filename: string | null;
+}
+
+/**
+ * A file download (not wrapped in { data }): same token, refresh, error mapping and global handlers as apiFetch.
+ */
+export async function apiDownload(path: string): Promise<Download> {
+  const response = await sendAuthorised((headers) =>
+    config.transport(`${API_BASE}${path}`, { method: 'GET', headers: { ...headers, Accept: '*/*' } }),
+  );
+  if (!response.ok) return failWith(response, await response.json().catch(() => null));
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition);
+  const raw = match?.[1] ?? match?.[2] ?? null;
+  return { blob: await response.blob(), filename: raw ? decodeURIComponent(raw) : null };
 }
 
 /** Calls our API with the Supabase access token, unwraps { data } and throws ApiError otherwise. */

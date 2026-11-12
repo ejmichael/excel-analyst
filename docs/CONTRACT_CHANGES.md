@@ -70,3 +70,10 @@ Entry format:
 - Proposed shape: (1) server: `cors({ origin: CLIENT_URL, exposedHeaders: ['Retry-After'] })`. (2) Decide whether `preamble_lines` includes blank lines (as `''`) and align either the server or `fixtures/expected.json`.
 - Affects: every 429 response; `DatasetDetail.preamble_lines`.
 - Status: PROPOSED
+
+## 2026-11-12: The CSV file name is not readable by the client (from: client)
+- What: the contract says `GET /blocks/:id/export.csv` sets `Content-Disposition: attachment` with the file name `<slug>-<YYYY-MM-DD>.csv`. Cross-origin, the browser only exposes response headers listed in `Access-Control-Expose-Headers`, and the server's CORS (`cors({ origin: CLIENT_URL })`) lists none, so `Content-Disposition` reads as null on the client (checked against the running server on 2026-11-12). The same applies to `Retry-After` (entry of 2026-11-10, still PROPOSED).
+- Why: without it the client cannot use the server's file name. It currently falls back to the same pattern made from the block title and today's SAST date, which matched the server's name in testing but is a copy of the server's rule.
+- Proposed shape: server: `cors({ origin: CLIENT_URL, exposedHeaders: ['Retry-After', 'Content-Disposition'] })`. No contract text change needed beyond noting that these two headers are exposed to the client.
+- Affects: `GET /blocks/:id/export.csv` (and the XLSX export in S4), every 429.
+- Status: PROPOSED

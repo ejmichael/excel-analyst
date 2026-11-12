@@ -1,4 +1,5 @@
 import type { Me, Plan, PlanLimits, Usage, Workspace } from '../types';
+import type { MockBlock } from './blocks';
 import type { MockDataset } from './datasets';
 
 /** Mirrors the plan_limits seed in db/schema.sql. */
@@ -84,6 +85,10 @@ export interface MockUser {
   workspaces: Workspace[];
   /** Optional so sessions saved before datasets existed still load. */
   datasets?: MockDataset[];
+  /** Answers (S2). Optional for the same reason. */
+  blocks?: MockBlock[];
+  /** When each question was answered, like usage_events of kind question. */
+  question_events?: string[];
 }
 
 /** First day of the current month in SAST (UTC+2, no DST), as YYYY-MM-DD. */
@@ -102,7 +107,7 @@ export function buildMe(user: MockUser): Me {
   const usage: Usage = {
     month_start: sastMonthStart(),
     uploads: (user.datasets ?? []).filter((ds) => ds.detail.created_at.slice(0, 10) >= sastMonthStart()).length,
-    questions: 0,
+    questions: (user.question_events ?? []).filter((t) => t.slice(0, 10) >= sastMonthStart()).length,
     reports: 0,
     report_runs: 0,
     exports: 0,

@@ -21,6 +21,7 @@ import {
   rawSamplesFor,
   type DatasetTemplate,
 } from './datasetFixtures';
+import { seedDemoBlocks } from './blocks';
 
 export interface MockDataset {
   detail: DatasetDetail;
@@ -107,6 +108,12 @@ function datasetsOf(user: MockUser): MockDataset[] {
   return user.datasets;
 }
 
+/** The parts of a dataset the block routes need, after settling any finished profiling. Null if not found. */
+export function datasetSnapshot(user: MockUser, id: string) {
+  const ds = datasetsOf(user).find((d) => d.detail.id === id);
+  return ds ? { status: ds.detail.status, columns: ds.detail.columns, row_count: ds.detail.row_count } : null;
+}
+
 /** Example files for the demo account, so every state can be seen without uploading. */
 export function seedDemoDatasets(user: MockUser): void {
   const ws = user.workspaces.find((w) => w.is_default);
@@ -153,6 +160,7 @@ export function seedDemoDatasets(user: MockUser): void {
   Object.assign(profiling.detail, { status: 'profiling', expires_at: null, suggestions: [] } satisfies Partial<DatasetDetail>);
   profiling.profiling_until = Date.now() + MOCK_PROFILING_MS + 2000;
 
+  seedDemoBlocks(user, profiling.detail.id, expired.detail.id);
   user.datasets = [
     expired,
     make(BANK, '2026-10-21T14:05:00+02:00'),
