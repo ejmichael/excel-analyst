@@ -5,7 +5,7 @@ import { type FollowUp, type LlmClient, LlmError, type LlmUsage, type ToolCallRe
 import { narratorRetryMessage, narratorSystem, NARRATOR_MAX_TOKENS, narrativeSchema, WRITE_NARRATIVE_TOOL } from '../../llm/prompts/narrator.js';
 import { PLAN_ANALYSIS_TOOL, type Plan, PLANNER_MAX_TOKENS, PLANNER_SYSTEM, planSchema, repairMessage } from '../../llm/prompts/planner.js';
 import type { BlockCheck, BlockSource, CellValue, ChartSpec, ChartType, ResultColumn } from '../../types/api.js';
-import { type QueryResult, SandboxError, type SandboxSession, withSandbox } from '../sandbox/sandbox.js';
+import { type QueryResult, SandboxError, type SandboxErrorCategory, type SandboxSession, withSandbox } from '../sandbox/sandbox.js';
 import { buildNarratorUser, buildPlannerUser, MAX_SAMPLE_ROWS, type PromptColumn } from './prompts.js';
 import { renderNarrative, type RenderResult } from './tokens.js';
 
@@ -73,9 +73,21 @@ export class AskLlmFailure extends Error {
 export const CANNOT_ANSWER_DEFAULT = 'This question cannot be answered from the columns in this file.';
 export const CANNOT_BUILD_QUERY = 'We could not work out how to answer this from your file. Try asking it a different way.';
 
+/**
+ * Why a plan needed a repair, as a fixed category that is safe to log (never SQL, values or error text). Stored in the
+ * usage_events meta of the repair call so patterns can be counted later.
+ */
+export type RepairReason =
+  | 'plan_schema_invalid'
+  | 'plan_incomplete'
+  | 'missing_value_format'
+  | 'unknown_chart_column'
+  | SandboxErrorCategory
+  | `source_filter_${SandboxErrorCategory}`;
+
 type PlanEvaluation =
   | { ok: true; plan: Plan & { title: string; sql: string; chart: ChartSpec }; result: QueryResult }
-  | { ok: false; error: string }
+  | { ok: false; error: string; reason: RepairReason }
   | { cannot: string };
 
 /** Runs the plan's SQL and the server-side checks from LLM_PROMPTS section 2. */
@@ -83,18 +95,18 @@ async function evaluatePlan(raw: unknown, session: SandboxSession): Promise<Plan
   const parsed = planSchema.safeParse(raw);
   if (!parsed.success) {
     const where = parsed.error.issues.map((i) => i.path.join('.') || 'plan').slice(0, 5).join(', ');
-    return { ok: false, error: `the plan_analysis output did not match the schema (${where})` };
+    return { ok: false, error: `the plan_analysis output did not match the schema (${where})`, reason: 'plan_schema_invalid' };
   }
   const plan = parsed.data;
   if (!plan.can_answer) return { cannot: plan.reason_if_not?.trim() || CANNOT_ANSWER_DEFAULT };
   if (!plan.title?.trim() || !plan.sql?.trim() || !plan.chart) {
-    return { ok: false, error: 'title, sql and chart are required when can_answer is true' };
+    return { ok: false, error: 'title, sql and chart are required when can_answer is true', reason: 'plan_incomplete' };
   }
   let result: QueryResult;
   try {
     result = await session.query(plan.sql);
   } catch (err) {
-    if (err instanceof SandboxError) return { ok: false, error: err.message };
+    if (err instanceof SandboxError) return { ok: false, error: err.message, reason: err.category };
     throw err;
   }
   // The source-rows filter is model-written SQL too: it must pass the sandbox now, not first fail when the user clicks.
@@ -102,12 +114,13 @@ async function evaluatePlan(raw: unknown, session: SandboxSession): Promise<Plan
     try {
       await session.query(`SELECT count(*) AS n FROM data WHERE (${plan.source_filter_sql})`);
     } catch (err) {
-      if (err instanceof SandboxError) return { ok: false, error: `source_filter_sql failed: ${err.message}` };
+      if (err instanceof SandboxError) return { ok: false, error: `source_filter_sql failed: ${err.message}`, reason: `source_filter_${err.category}` };
       throw err;
     }
   }
   const names = new Set(result.columns.map((c) => c.name));
   const missing: string[] = [];
+  let reason: RepairReason = 'unknown_chart_column';
   const need = (field: string, col: string | null | undefined) => {
     if (col !== null && col !== undefined && !names.has(col)) missing.push(`${field} "${col}" is not a result column`);
   };
@@ -115,8 +128,10 @@ async function evaluatePlan(raw: unknown, session: SandboxSession): Promise<Plan
   plan.chart.y.forEach((y, i) => need(`chart.y[${i}]`, y));
   need('chart.series', plan.chart.series);
   need('reconcile.column', plan.reconcile?.column);
+  const chartProblems = missing.length;
   for (const c of result.columns) if (!plan.chart.value_format[c.name]) missing.push(`value_format has no entry for result column "${c.name}"`);
-  if (missing.length > 0) return { ok: false, error: missing.join('; ') };
+  if (chartProblems === 0 && missing.length > 0) reason = 'missing_value_format';
+  if (missing.length > 0) return { ok: false, error: missing.join('; '), reason };
   return { ok: true, plan: plan as Plan & { title: string; sql: string; chart: ChartSpec }, result };
 }
 
@@ -199,7 +214,7 @@ export async function ask(input: AskInput, deps: AskDeps): Promise<AskResult> {
         { role: 'assistant', content: JSON.stringify(raw) },
         { role: 'user', content: repairMessage(evaluation.error) },
       ];
-      raw = await callModel('repair', { ...plannerReq, followUps });
+      raw = await callModel('repair', { ...plannerReq, followUps }, { reason: evaluation.reason });
       evaluation = await evaluatePlan(raw, session);
       if ('ok' in evaluation && !evaluation.ok) return { cannot: CANNOT_BUILD_QUERY };
     }
@@ -247,7 +262,8 @@ export async function ask(input: AskInput, deps: AskDeps): Promise<AskResult> {
           { role: 'user', content: narratorRetryMessage(rendered.problems) },
         ],
       },
-      { retry: true },
+      // Categories only (for example free_standing_number); never the text or values.
+      { retry: true, reasons: [...new Set(rendered.categories)].join(',') },
     );
     const retried = render(retry.narrative_template);
     // Keep the better attempt: the retry unless it is worse.

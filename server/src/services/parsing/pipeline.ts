@@ -96,7 +96,7 @@ export async function profileFile(input: ProfileInput): Promise<ProfileResult> {
     if (!header) {
       header = head.find((r) => !isBlank(r.cells)) ?? null;
       if (!header) throw new ParseFailure('This file is empty.');
-      warnings.push(`We could not find a clear header row, so we used row ${header.n}. Change it in the parse options if that is wrong.`);
+      warnings.push(`We could not find a clear header row, so we used row ${header.n}. If that is wrong, change it under "Check how we read your file".`);
     }
   }
   const headerRow = header.n;
@@ -166,7 +166,7 @@ export async function profileFile(input: ProfileInput): Promise<ProfileResult> {
       warnings.push('Some dates are written day-first and others month-first. We read them day-first; check the date columns.');
     } else if (!firstOver12) {
       warnings.push(
-        'Every date in this file could be read day-first or month-first. We assumed day-first (dd/mm/yyyy), the South African norm. If that is wrong, choose month-first in the parse options.',
+        'Every date in this file could be read day-first or month-first. We assumed day-first (dd/mm/yyyy), the South African norm. If that is wrong, choose month-first under "Check how we read your file".',
       );
     }
   }

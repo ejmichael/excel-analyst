@@ -54,13 +54,48 @@ export interface RenderInput {
   valueFormat: Record<string, ValueFormat>;
 }
 
+/**
+ * Why a narrative failed the numbers_from_data rules, as fixed categories that are safe to log (no text or
+ * values). Logged in usage_events meta when the narrator is asked to retry.
+ */
+export type NarrativeProblemCategory =
+  | 'unknown_token'
+  | 'missing_row'
+  | 'unknown_column'
+  | 'unformattable_value'
+  | 'too_many_tokens'
+  | 'free_standing_number';
+
 export interface RenderResult {
   /** Rendered text; unresolved tokens are "[?]", free-standing numbers left in place. */
   text: string;
   ok: boolean;
   /** Plain-English problems, used in the narrator retry line and the check detail. */
   problems: string[];
+  /** One category per problem, same order as `problems`. */
+  categories: NarrativeProblemCategory[];
   tokenCount: number;
+}
+
+/**
+ * Deterministic cleanup before rendering: a token for a rand amount already renders as "R 1 234,56", so a currency
+ * symbol or word the model wrote next to it would double it ("RR 99 284,58", "R 30 413,80 rand"). For each token whose
+ * column value_format is zar, this removes an immediately preceding standalone "R" or "ZAR" (any case, optional space)
+ * and an immediately following "ZAR", "rand" or "rands" (any case, optional space). Other formats are left alone.
+ */
+// prefix: a standalone R or ZAR (no letter or digit before it) with an optional space; token; suffix: an optional space
+// and ZAR, rand or rands that is a whole word (so "grand" or "random" never match).
+const ZAR_NEIGHBOURS_RE =
+  /((?<![\p{L}\p{N}])(?:R|ZAR) ?)?(\{\{\s*r\d+\.([^{}\s]+?)\s*\}\})( ?(?<![\p{L}\p{N}])(?:ZAR|rands?)(?![\p{L}\p{N}]))?/giu;
+
+export function stripCurrencyAroundZarTokens(template: string, valueFormat: Record<string, ValueFormat>): string {
+  return template.replace(
+    ZAR_NEIGHBOURS_RE,
+    (whole, prefix: string | undefined, token: string, column: string, suffix: string | undefined) => {
+      if (valueFormat[column] !== 'zar' || (!prefix && !suffix)) return whole;
+      return token;
+    },
+  );
 }
 
 /** Free-standing numbers of two or more digits outside tokens, except years 1990-2099. */
@@ -76,37 +111,43 @@ export function freeStandingNumbers(template: string): string[] {
   return found;
 }
 
-export function renderNarrative({ template, rows, rowCount, valueFormat }: RenderInput): RenderResult {
+export function renderNarrative({ template: raw, rows, rowCount, valueFormat }: RenderInput): RenderResult {
+  const template = stripCurrencyAroundZarTokens(raw, valueFormat);
   const problems: string[] = [];
+  const categories: NarrativeProblemCategory[] = [];
+  const problem = (category: NarrativeProblemCategory, text: string) => {
+    categories.push(category);
+    problems.push(text);
+  };
   let tokenCount = 0;
   const text = template.replace(TOKEN_RE, (_whole, inner: string) => {
     tokenCount++;
     if (inner === 'rows') return integer.format(rowCount);
     const m = ROW_TOKEN_RE.exec(inner);
     if (!m) {
-      problems.push(`unknown token {{${inner}}}`);
+      problem('unknown_token', `unknown token {{${inner}}}`);
       return UNRESOLVED;
     }
     const index = Number(m[1]);
     const column = m[2]!;
     if (index > MAX_TOKEN_ROW || index >= rows.length) {
-      problems.push(`{{${inner}}} points to a row that does not exist`);
+      problem('missing_row', `{{${inner}}} points to a row that does not exist`);
       return UNRESOLVED;
     }
     const format = valueFormat[column];
     const row = rows[index]!;
     if (!format || !(column in row)) {
-      problems.push(`{{${inner}}} uses a column that is not in the result`);
+      problem('unknown_column', `{{${inner}}} uses a column that is not in the result`);
       return UNRESOLVED;
     }
     const formatted = formatValue(row[column] ?? null, format);
     if (formatted === null) {
-      problems.push(`{{${inner}}} cannot be shown as ${format}`);
+      problem('unformattable_value', `{{${inner}}} cannot be shown as ${format}`);
       return UNRESOLVED;
     }
     return formatted;
   });
-  if (tokenCount > MAX_TOKENS) problems.push(`more than ${MAX_TOKENS} tokens`);
-  for (const n of freeStandingNumbers(template)) problems.push(`the number "${n}" is written directly instead of as a token`);
-  return { text, ok: problems.length === 0, problems, tokenCount };
+  if (tokenCount > MAX_TOKENS) problem('too_many_tokens', `more than ${MAX_TOKENS} tokens`);
+  for (const n of freeStandingNumbers(template)) problem('free_standing_number', `the number "${n}" is written directly instead of as a token`);
+  return { text, ok: problems.length === 0, problems, categories, tokenCount };
 }

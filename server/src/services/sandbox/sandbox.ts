@@ -31,14 +31,44 @@ export const SANDBOX_LIMITS = {
   maxWaitMs: 20_000,
 };
 
+/**
+ * A fixed category for why a query failed, safe to log: it never contains SQL, values or error text.
+ * Used in usage_events meta so repair patterns can be counted later.
+ */
+export type SandboxErrorCategory =
+  | 'sql_rejected'
+  | 'timeout'
+  | 'duckdb_parse_error'
+  | 'unknown_column'
+  | 'duckdb_binder_error'
+  | 'unknown_function_or_table'
+  | 'type_conversion_error'
+  | 'out_of_range'
+  | 'duplicate_column'
+  | 'duckdb_error';
+
+/** Maps a raw DuckDB error message to its category (the message itself is never stored). */
+export function categoriseDuckDbError(raw: string): SandboxErrorCategory {
+  if (/^Parser Error/i.test(raw)) return 'duckdb_parse_error';
+  if (/^Binder Error/i.test(raw) && /column/i.test(raw)) return 'unknown_column';
+  if (/^Binder Error/i.test(raw)) return 'duckdb_binder_error';
+  if (/^Catalog Error/i.test(raw)) return 'unknown_function_or_table';
+  if (/^Conversion Error|Could not convert/i.test(raw)) return 'type_conversion_error';
+  if (/^Out of Range Error/i.test(raw)) return 'out_of_range';
+  return 'duckdb_error';
+}
+
 /** Why a query did not produce a result. `message` is DuckDB's or ours, with quoted literals redacted (no data). */
 export class SandboxError extends Error {
+  readonly category: SandboxErrorCategory;
   constructor(
     readonly kind: 'rejected' | 'failed' | 'timeout',
     message: string,
+    category?: SandboxErrorCategory,
   ) {
     super(message);
     this.name = 'SandboxError';
+    this.category = category ?? (kind === 'rejected' ? 'sql_rejected' : kind === 'timeout' ? 'timeout' : 'duckdb_error');
   }
 }
 
@@ -106,7 +136,8 @@ export class SandboxSession {
     } catch (err) {
       if (timedOut) throw new SandboxError('timeout', 'The query took longer than 10 seconds and was stopped.');
       if (err instanceof SandboxError) throw err;
-      throw new SandboxError('failed', safeErrorMessage(err instanceof Error ? err.message : String(err)));
+      const raw = err instanceof Error ? err.message : String(err);
+      throw new SandboxError('failed', safeErrorMessage(raw), categoriseDuckDbError(raw));
     } finally {
       clearTimeout(timer);
     }
@@ -120,7 +151,7 @@ export class SandboxSession {
       const serialized = reader.getRowObjectsJson()[0]?.s;
       checkParseTree(JSON.parse(String(serialized)));
     } catch (err) {
-      if (err instanceof SqlRejected) throw new SandboxError('rejected', err.reason);
+      if (err instanceof SqlRejected) throw new SandboxError('rejected', err.reason, err.parseError ? 'duckdb_parse_error' : 'sql_rejected');
       throw new SandboxError('rejected', 'The query could not be checked.');
     }
   }
@@ -137,7 +168,7 @@ export class SandboxSession {
       const reader = await this.con.runAndReadAll(`SELECT * FROM (${inner}) AS sandbox_q LIMIT ${maxRows}`, opts.params ?? []);
       const names = reader.columnNames();
       if (new Set(names).size !== names.length) {
-        throw new SandboxError('failed', 'Two result columns have the same name; give each column a unique alias.');
+        throw new SandboxError('failed', 'Two result columns have the same name; give each column a unique alias.', 'duplicate_column');
       }
       const types = reader.columnTypes().map((t) => t.toString());
       const rows = reader.getRowObjectsJson().map((r) => {

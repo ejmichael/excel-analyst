@@ -8,7 +8,11 @@
  */
 
 export class SqlRejected extends Error {
-  constructor(readonly reason: string) {
+  /** `parseError`: DuckDB could not parse the SQL at all (logged as duckdb_parse_error, not sql_rejected). */
+  constructor(
+    readonly reason: string,
+    readonly parseError = false,
+  ) {
     super(reason);
     this.name = 'SqlRejected';
   }
@@ -102,7 +106,7 @@ export function checkParseTree(parsed: unknown): void {
   const p = parsed as { error?: boolean; error_message?: string; statements?: unknown[] };
   if (!p || p.error) {
     // DuckDB's parser message (no data in it): passed to the repair call as-is.
-    throw new SqlRejected(p?.error_message ? `The query could not be parsed: ${p.error_message}` : 'The query could not be parsed.');
+    throw new SqlRejected(p?.error_message ? `The query could not be parsed: ${p.error_message}` : 'The query could not be parsed.', true);
   }
   if (!Array.isArray(p.statements) || p.statements.length !== 1) throw new SqlRejected('Only one statement is allowed.');
   const ctes = cteNames(p.statements, new Set());

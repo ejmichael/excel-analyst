@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_VALUE, formatValue, freeStandingNumbers, MAX_TOKENS, renderNarrative, UNRESOLVED } from '../../src/services/analysis/tokens.js';
+import { EMPTY_VALUE, formatValue, freeStandingNumbers, MAX_TOKENS, renderNarrative, stripCurrencyAroundZarTokens, UNRESOLVED } from '../../src/services/analysis/tokens.js';
 
 // Intl en-ZA output uses no-break spaces as group separators; compare with them normalised.
 const norm = (s: string) => s.replace(/[  ]/g, ' ');
@@ -68,5 +68,52 @@ describe('renderNarrative and numbers_from_data', () => {
 
   it('checks the template, so numbers produced by tokens never count as free-standing', () => {
     expect(render('{{r0.n}} sales.').ok).toBe(true);
+  });
+});
+
+describe('currency cleanup around zar tokens (user decision 2026-11-12)', () => {
+  const strip = (template: string) => stripCurrencyAroundZarTokens(template, { ...valueFormat });
+  const top = 'R 99 284,58';
+
+  it.each([
+    ['R{{r1.net}}', '{{r1.net}}'],
+    ['R {{r1.net}}', '{{r1.net}}'],
+    ['ZAR {{r1.net}}', '{{r1.net}}'],
+    ['zar{{r1.net}}', '{{r1.net}}'],
+    ['{{r1.net}} ZAR', '{{r1.net}}'],
+    ['{{r1.net}} rand', '{{r1.net}}'],
+    ['{{r1.net}} rands', '{{r1.net}}'],
+    ['{{r1.net}} Rand.', '{{r1.net}}.'],
+    ['R{{r1.net}} rand', '{{r1.net}}'],
+  ])('removes the doubled currency in %j', (input, output) => {
+    expect(strip(input)).toBe(output);
+    const rendered = render(`Padstal earned ${input}`);
+    expect(rendered.ok).toBe(true);
+    expect(norm(rendered.text)).toBe(`Padstal earned ${top}${output.endsWith('.') ? '.' : ''}`);
+  });
+
+  it('leaves a normal sentence unchanged', () => {
+    const t = '{{r1.store}} earned the most, {{r1.net}}, which is {{r1.share}} of sales.';
+    expect(strip(t)).toBe(t);
+    const rendered = render(t);
+    expect(rendered.ok).toBe(true);
+    expect(norm(rendered.text)).toBe(`Padstal earned the most, ${top}, which is 35,5% of sales.`);
+  });
+
+  it('does not touch tokens of other formats, or words that only contain "rand" or end in "R"', () => {
+    expect(strip('{{r0.n}} grand openings')).toBe('{{r0.n}} grand openings');
+    expect(strip('{{r0.n}} rand')).toBe('{{r0.n}} rand');
+    expect(strip('R{{r0.store}}')).toBe('R{{r0.store}}');
+    expect(strip('{{r1.net}} grand total')).toBe('{{r1.net}} grand total');
+    expect(strip('{{r1.net}} random')).toBe('{{r1.net}} random');
+    expect(strip('OR {{r1.net}}')).toBe('OR {{r1.net}}');
+    expect(strip('FOR{{r1.net}}')).toBe('FOR{{r1.net}}');
+  });
+
+  it('numbers_from_data still passes after the cleanup, and still catches free-standing numbers', () => {
+    expect(render('Top store: {{r1.store}} with R {{r1.net}} ZAR across {{rows}} stores.').ok).toBe(true);
+    const bad = render('R{{r1.net}} from 12 stores');
+    expect(bad.ok).toBe(false);
+    expect(bad.categories).toEqual(['free_standing_number']);
   });
 });

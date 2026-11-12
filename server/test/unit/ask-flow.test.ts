@@ -150,6 +150,26 @@ describe('ask: cannot answer and repair', () => {
     expect((await ask(input, { llm: client, recordLlm })).kind).toBe('answered');
     expect(requests[1]!.followUps![1]!.content).toMatch(/Table functions are not allowed|READ_CSV/);
   });
+
+  it('logs only a category for why the repair happened (no SQL, values or error text)', async () => {
+    const cases: Array<[unknown, string]> = [
+      [goodPlan({ sql: 'SELECT "shop", SUM("net_amount") AS net FROM data GROUP BY 1' }), 'unknown_column'],
+      [goodPlan({ sql: 'SELEKT 1' }), 'duckdb_parse_error'],
+      [goodPlan({ sql: `SELECT * FROM read_csv('/etc/passwd')` }), 'sql_rejected'],
+      [goodPlan({ chart: { ...goodPlan().chart, y: ['total'] } }), 'unknown_chart_column'],
+      [goodPlan({ chart: { ...goodPlan().chart, value_format: { store: 'text' } } }), 'missing_value_format'],
+      [{ can_answer: true, title: 'x'.repeat(90), sql: BY_STORE_SQL }, 'plan_schema_invalid'],
+      [goodPlan({ source_filter_sql: '"nope" > 1' }), 'source_filter_unknown_column'],
+    ];
+    for (const [bad, reason] of cases) {
+      recordLlm.mockClear();
+      const { client } = fakeLlm({ plan_analysis: [bad, goodPlan()], write_narrative: [goodNarrative] });
+      expect((await ask(input, { llm: client, recordLlm })).kind).toBe('answered');
+      const meta = recordLlm.mock.calls.find((c) => c[0] === 'repair')![2];
+      expect(meta.reason, reason).toBe(reason);
+      expect(Object.values(meta).every((v) => typeof v !== 'string' || !/select|nope|passwd|shop/i.test(v))).toBe(true);
+    }
+  });
 });
 
 describe('ask: narrator', () => {
@@ -160,7 +180,7 @@ describe('ask: narrator', () => {
     if (r.kind !== 'answered') throw new Error('expected an answer');
     expect(r.block.status).toBe('ok');
     expect(purposes()).toEqual(['plan', 'narrate', 'narrate']);
-    expect(recordLlm.mock.calls[2]![2]).toMatchObject({ retry: true });
+    expect(recordLlm.mock.calls[2]![2]).toMatchObject({ retry: true, reasons: 'missing_row,free_standing_number' });
     const retryLine = requests[2]!.followUps![1]!.content;
     expect(retryLine).toMatch(/^Your previous text broke these rules: .*\. Rewrite it\.$/);
     expect(retryLine).toContain('"99,284.58"');

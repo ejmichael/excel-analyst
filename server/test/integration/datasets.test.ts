@@ -311,6 +311,12 @@ describe('reparse', () => {
     const preview = (await request(app).get(api(`/datasets/${id}/preview?limit=200`)).set(bearer(a)).expect(200)).body.data as DatasetPreview;
     const total = preview.rows.reduce((s, r) => s + Math.round((r.amount as number) * 100), 0) / 100;
     expect(total).toBeCloseTo(expected['04_ambiguous_dates.csv']!.sums.amount!, 2);
+
+    // Options not supplied are re-detected, not carried over from the last parse: an empty reparse goes back to day-first.
+    await request(app).post(api(`/datasets/${id}/reparse`)).set(bearer(a)).send({}).expect(202);
+    const redetected = await waitFor(a, id);
+    expect(redetected.parse_options.date_format).toBe('dmy');
+    expect(redetected.warnings.some((w) => /day-first/.test(w))).toBe(true);
   });
 
   it('validates the options', async () => {

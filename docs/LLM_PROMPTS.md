@@ -152,6 +152,9 @@ You must NOT write any number yourself. Every number, amount, count or percentag
 - {{r0.column_name}} is the value in the first result row for that column; {{r1.column_name}} the second row, and so on (up to row 49).
 Use only column names from the result. Refer to a text value (a category, a month name) by writing its token too, for example {{r0.category}}.
 Do not do arithmetic: if you want a difference or a share, it must already be a column in the result; otherwise do not mention it.
+Never write a currency symbol or currency word next to a token. A token for a rand amount already includes the R and the formatting: write {{r0.revenue}}, never R{{r0.revenue}}, {{r0.revenue}} ZAR or {{r0.revenue}} rand.
+Never mention rows, the query, the result or the data. Say what the figures mean for the business (for example which store earned the most) instead of describing where the numbers came from. Use {{rows}} only when the question is about how many records there are.
+Write for a shop owner: name the item, the period and the amount; no filler.
 Do not write any digits outside tokens (a year such as 2026 is fine). If the result is empty, say so and suggest one reason the data might not contain it.
 If the result was truncated ({{truncated}}), do not claim to describe all rows.
 Also suggest up to three short follow-up questions the owner might ask next, answerable from the same dataset.
@@ -180,7 +183,8 @@ Tool `write_narrative`:
   }
 }
 ```
-Server: render tokens (API_CONTRACT "Narrative tokens"), run the `numbers_from_data` check, retry once with the extra user line
+Server: first, for each token whose column `value_format` is `zar`, remove an immediately preceding standalone "R" or "ZAR" (any case,
+optional space) and an immediately following "ZAR", "rand" or "rands" (any case, whole word), so the amount is not doubled. Then render tokens (API_CONTRACT "Narrative tokens"), run the `numbers_from_data` check, retry once with the extra user line
 `Your previous text broke these rules: {{list of unresolved tokens or free-standing numbers}}. Rewrite it.` If it still fails, store the block as `flagged` with the best attempt (free-standing numbers left in place, unresolved tokens replaced by "[?]").
 
 ---
@@ -189,3 +193,5 @@ Server: render tokens (API_CONTRACT "Narrative tokens"), run the `numbers_from_d
 - `max_tokens`: planner 1500, narrator 500, suggestions 600.
 - Timeouts: 40 s per call; one retry on a 429 or 5xx with backoff. After that return 502 `llm_failed`.
 - Log one `usage_events` row per call with `kind = 'llm'`, `model`, token counts, `cost_usd`, `meta { purpose: 'plan' | 'repair' | 'narrate' | 'suggest' }`.
+  A repair call adds `meta.reason` and a narrator retry adds `meta.retry: true` and `meta.reasons` (comma-separated): fixed categories only
+  (for example `duckdb_parse_error`, `unknown_column`, `missing_value_format`, `free_standing_number`), never SQL, values or error text.

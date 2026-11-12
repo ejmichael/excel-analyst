@@ -19,7 +19,7 @@ import { generateSuggestions, MAX_PROMPT_COLUMNS, SUGGESTIONS_FAILED_WARNING } f
 export const MAX_CONCURRENT_JOBS = 2;
 export const JOB_TIMEOUT_MS = 120_000;
 export const INTERRUPTED_MESSAGE = 'Interrupted by a restart. Please try again.';
-const GENERIC_FAILURE = 'We could not read this file. Please try again, or change the parse options.';
+const GENERIC_FAILURE = 'We could not read this file. Please try again, or use "Check how we read your file" to change how it is read.';
 
 export interface ProfilingJob {
   datasetId: string;
