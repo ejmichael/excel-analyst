@@ -10,6 +10,7 @@ import { DatasetPage } from '@/features/datasets/DatasetPage';
 import { DatasetsPage } from '@/features/datasets/DatasetsPage';
 import { InlineLoading } from '@/components/PageStatus';
 import { ReportsPage } from '@/features/reports/ReportsPage';
+import { BrandSettingsPage } from '@/features/settings/BrandSettingsPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { AppShell } from '@/features/shell/AppShell';
 import { LegalPlaceholderPage, NotFoundPage, PlaceholderPage } from '@/features/shell/pages';
@@ -67,6 +68,7 @@ export const routes: RouteObject[] = [
               },
               { path: '/templates', element: <PlaceholderPage title="Templates" /> },
               { path: '/settings', element: <SettingsPage /> },
+              { path: '/settings/brand', element: <BrandSettingsPage /> },
             ],
           },
         ],

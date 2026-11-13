@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router';
-import { Check, ChevronsUpDown, LogOut, Menu, Settings, UserRound } from 'lucide-react';
+import { Check, ChevronsUpDown, LogOut, Menu, Palette, Settings, UserRound } from 'lucide-react';
 import { useSession } from '@/auth/SessionProvider';
 import { useMe } from '@/auth/useMe';
 import { Badge } from '@/components/ui/badge';
@@ -195,6 +195,10 @@ function UserMenu() {
         <DropdownMenuItem onSelect={() => navigate('/settings')}>
           <Settings className="size-4" aria-hidden />
           Settings
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate('/settings/brand')}>
+          <Palette className="size-4" aria-hidden />
+          Your brand
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void signOut().then(() => navigate('/sign-in', { replace: true }))}>
           <LogOut className="size-4" aria-hidden />
