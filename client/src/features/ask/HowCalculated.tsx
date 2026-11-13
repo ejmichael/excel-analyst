@@ -16,6 +16,9 @@ export interface DatasetState {
   status: string | null;
   expires_at: string | null;
   columns: DatasetColumn[];
+  /** The workspace and name of the file, for the report tray (null when unknown). */
+  workspace_id?: string | null;
+  name?: string | null;
 }
 
 /**

@@ -65,7 +65,14 @@ function AskView({ dataset }: { dataset: DatasetDetail }) {
   const latestHeading = useRef<HTMLHeadingElement>(null);
   const askedFromUrl = useRef(false);
 
-  const state: DatasetState = { exists: true, status: dataset.status, expires_at: dataset.expires_at, columns: dataset.columns };
+  const state: DatasetState = {
+    exists: true,
+    status: dataset.status,
+    expires_at: dataset.expires_at,
+    columns: dataset.columns,
+    workspace_id: dataset.workspace_id,
+    name: dataset.name,
+  };
   const suggestions = dataset.suggestions;
 
   const submit = (text: string, source: AskRequest['source']) => {

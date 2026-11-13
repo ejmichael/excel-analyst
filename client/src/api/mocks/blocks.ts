@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Block, PlanLimitDetails, SourceRows } from '../types';
 import { MOCK_PLAN_LIMITS, cheapestPlanAllowing, sastMonthStart, sastTimestamp, type MockUser } from './data';
 import { BLOCK_TEMPLATES, blockFrom, templateForQuestion } from './blockFixtures';
+import { isInAnyReport } from './reports';
 
 /**
  * Mock ask and block routes. Special questions exercise every state (documented in client/README.md):
@@ -173,7 +174,7 @@ export async function routeBlocks(
   if (!sub && method === 'GET') return ok(block);
 
   if (!sub && method === 'DELETE') {
-    if (entry.pinned) return fail(409, 'conflict', 'This block is pinned in a report.');
+    if (entry.pinned || isInAnyReport(user, entry.block.id)) return fail(409, 'conflict', 'This block is pinned in a report.');
     user.blocks = blocksOf(user).filter((b) => b !== entry);
     return ok({ deleted: true });
   }

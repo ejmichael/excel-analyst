@@ -3,6 +3,7 @@ import type { ApiError, ErrorCode, PlanLimitDetails, Workspace } from '../types'
 import type { Transport, UploadTransport } from '../client';
 import { buildMe, cheapestPlanAllowing, sastTimestamp, type MockUser } from './data';
 import { routeBlocks } from './blocks';
+import { handleLogoUpload, routeLogoDelete, routeReports } from './reports';
 import { datasetSnapshot, handleUpload, routeDatasets } from './datasets';
 import { mockStore } from './store';
 
@@ -155,6 +156,11 @@ export const mockTransport: Transport = async (url, init) => {
 
   if (init.body instanceof FormData) {
     if (!user.popia_consent_at) return fail(403, 'consent_required', 'Accept the terms and privacy notice first.');
+    if (path === '/me/logo' && method === 'POST') {
+      const logo = await handleLogoUpload(user, init.body);
+      mockStore.save();
+      return json(logo.status, logo.body);
+    }
     if (path !== '/datasets' || method !== 'POST') return fail(404, 'not_found', 'Not found.');
     const result = await handleUpload(user, init.body);
     mockStore.save();
@@ -176,6 +182,19 @@ export const mockTransport: Transport = async (url, init) => {
     mockStore.save();
     if (result?.raw) return result.raw;
     if (result) return new Response(JSON.stringify(result.body), { status: result.status, headers: { 'Content-Type': 'application/json', ...result.headers } });
+  }
+
+  if (path === '/me/logo' && method === 'DELETE') {
+    const result = routeLogoDelete(user);
+    mockStore.save();
+    return json(result.status, result.body);
+  }
+
+  if (path === '/reports' || path.startsWith('/reports/')) {
+    if (!user.popia_consent_at) return fail(403, 'consent_required', 'Accept the terms and privacy notice first.');
+    const result = routeReports(method, parsedUrl, user, body);
+    mockStore.save();
+    if (result) return json(result.status, result.body);
   }
 
   if (path.startsWith('/datasets')) {

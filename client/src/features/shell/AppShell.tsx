@@ -18,12 +18,24 @@ import { env } from '@/env';
 import { PLAN_LABELS } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 import { WorkspaceProvider, useActiveWorkspace } from '@/features/workspaces/WorkspaceProvider';
+import { ReportTray } from '@/features/reports/ReportTray';
+import { useReportTray } from '@/features/reports/tray';
 import { BrandMark } from './BrandMark';
 import { NAV_ITEMS } from './nav';
 
 export function AppShell() {
   return (
     <WorkspaceProvider>
+      <ShellLayout />
+    </WorkspaceProvider>
+  );
+}
+
+function ShellLayout() {
+  const { active } = useActiveWorkspace();
+  const trayOpen = useReportTray(active?.id).items.length > 0;
+  return (
+    <>
       <div className="min-h-dvh bg-background md:grid md:grid-cols-[15rem_1fr]">
         <aside className="hidden border-r bg-card md:flex md:min-h-dvh md:flex-col">
           <div className="px-5 py-5">
@@ -33,12 +45,14 @@ export function AppShell() {
         </aside>
         <div className="flex min-w-0 flex-col">
           <TopBar />
-          <main id="main" className="flex-1 px-4 py-6 sm:px-8">
+          {/* Room for the report tray: a bar at the bottom on small screens, a side panel on wide ones. */}
+          <main id="main" className={cn('flex-1 px-4 py-6 sm:px-8', trayOpen && 'pb-28 lg:pr-[22rem] lg:pb-6')}>
             <Outlet />
           </main>
         </div>
       </div>
-    </WorkspaceProvider>
+      <ReportTray workspaceId={active?.id} />
+    </>
   );
 }
 

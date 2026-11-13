@@ -1,5 +1,6 @@
 import type { Me, Plan, PlanLimits, Usage, Workspace } from '../types';
 import type { MockBlock } from './blocks';
+import type { MockReport } from './reports';
 import type { MockDataset } from './datasets';
 
 /** Mirrors the plan_limits seed in db/schema.sql. */
@@ -89,6 +90,11 @@ export interface MockUser {
   blocks?: MockBlock[];
   /** When each question was answered, like usage_events of kind question. */
   question_events?: string[];
+  /** Reports (S3) and when each was created (like usage_events of kind report). */
+  reports?: MockReport[];
+  report_events?: string[];
+  /** The uploaded logo as a data URL (never a remote URL). */
+  logo_data_url?: string | null;
 }
 
 /** First day of the current month in SAST (UTC+2, no DST), as YYYY-MM-DD. */
@@ -121,7 +127,7 @@ export function buildMe(user: MockUser): Me {
     business_name: user.business_name,
     plan: user.plan,
     consent_accepted: user.popia_consent_at !== null,
-    brand: { business_name: user.business_name, logo_url: null, color: user.brand_color },
+    brand: { business_name: user.business_name, logo_url: user.logo_data_url ?? null, color: user.brand_color },
     limits: MOCK_PLAN_LIMITS[user.plan],
     usage,
     subscription: null,
@@ -135,7 +141,8 @@ export function newMockUser(email: string, password: string): MockUser {
     password,
     full_name: null,
     business_name: null,
-    plan: 'free',
+    // Mock mode: paid@… accounts are on Solo, so branding can be tried; everyone else starts on Free.
+    plan: email.startsWith('paid@') ? 'solo' : 'free',
     brand_color: '#1E7A5F',
     popia_consent_at: null,
     // Same as the DB trigger: every new user gets one default workspace.

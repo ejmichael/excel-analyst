@@ -387,6 +387,10 @@ export function routeDatasets(method: string, url: URL, user: MockUser, body: un
 
   if (!sub && method === 'DELETE') {
     user.datasets = datasetsOf(user).filter((x) => x !== ds);
+    // Like the server: answers keep their results, but lose their link to the file.
+    for (const b of user.blocks ?? []) {
+      if (b.block.dataset_id === id) b.block = { ...b.block, dataset_id: null, has_source_rows: false };
+    }
     return ok({ deleted: true });
   }
 

@@ -41,7 +41,7 @@ export const mockStore = {
   },
   createUser(email: string, password: string): MockUser {
     const user = newMockUser(email.trim().toLowerCase(), password);
-    if (user.email.startsWith(DEMO_EMAIL_PREFIX)) seedDemoDatasets(user);
+    if (user.email.startsWith(DEMO_EMAIL_PREFIX) || user.email.startsWith('paid@')) seedDemoDatasets(user);
     state.users[user.email] = user;
     persist();
     return user;

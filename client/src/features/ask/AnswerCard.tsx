@@ -16,6 +16,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { saveBlob, slugify } from '@/lib/download';
 import { formatDateTime, formatNumber, isoDateInSast } from '@/lib/format';
+import { AddToReportButton } from '@/features/reports/AddToReportButton';
 import { BlockChart } from './BlockChart';
 import { HowCalculated, type DatasetState } from './HowCalculated';
 import { useBlockFeedback, useDeleteBlock } from './queries';
@@ -112,12 +113,12 @@ export function AnswerCard({ block, dataset, newest = false, headingRef, heading
 
       <HowCalculated block={block} dataset={dataset} defaultOpen={newest} />
 
-      <AnswerActions block={block} onDeleted={onDeleted} />
+      <AnswerActions block={block} dataset={dataset} onDeleted={onDeleted} />
     </article>
   );
 }
 
-function AnswerActions({ block, onDeleted }: { block: Block; onDeleted?: (id: string) => void }) {
+function AnswerActions({ block, dataset, onDeleted }: { block: Block; dataset: DatasetState; onDeleted?: (id: string) => void }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [download, setDownload] = useState<{ state: 'idle' | 'busy' | 'done' } | { state: 'error'; message: string }>({ state: 'idle' });
@@ -151,8 +152,7 @@ function AnswerActions({ block, onDeleted }: { block: Block; onDeleted?: (id: st
           <Trash2 aria-hidden />
           Delete this answer
         </Button>
-        {/* Room for "Add to report" (a later part). */}
-        <span data-slot="add-to-report" className="hidden" />
+        <AddToReportButton block={block} dataset={dataset} />
       </div>
       <div aria-live="polite" className="space-y-2">
         {download.state === 'done' && <p className="text-sm">The CSV file has been downloaded.</p>}
