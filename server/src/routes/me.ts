@@ -4,6 +4,7 @@ import { notFound, throwIfDbError } from '../lib/errors.js';
 import { authOf, ok } from '../lib/http.js';
 import { supabaseAdmin, supabaseForUser } from '../lib/supabase.js';
 import { validate } from '../middleware/validate.js';
+import { buildBrand } from '../services/brand.js';
 import { assertWithinLimit, toPlanLimits } from '../services/limits.js';
 import { getUsage } from '../services/usage.js';
 import type { Me, Plan, Subscription, UpdateMeRequest } from '../types/api.js';
@@ -15,6 +16,7 @@ interface ProfileRow {
   business_name: string | null;
   plan: Plan;
   brand_color: string;
+  brand_logo_path: string | null;
   popia_consent_at: string | null;
 }
 
@@ -26,7 +28,7 @@ interface SubscriptionRow {
   cancelled_at: string | null;
 }
 
-const PROFILE_COLUMNS = 'id, email, full_name, business_name, plan, brand_color, popia_consent_at';
+const PROFILE_COLUMNS = 'id, email, full_name, business_name, plan, brand_color, brand_logo_path, popia_consent_at';
 
 /** Builds Me from profiles + plan_limits + usage + subscription, read with the user's client (RLS applies). */
 export async function buildMe(userId: string, token: string): Promise<Me> {
@@ -69,8 +71,8 @@ export async function buildMe(userId: string, token: string): Promise<Me> {
     business_name: p.business_name,
     plan: p.plan,
     consent_accepted: p.popia_consent_at !== null,
-    // Logos arrive in Part 4.
-    brand: { business_name: p.business_name, logo_url: null, color: p.brand_color },
+    // The logo URL is signed fresh on every read (1 hour); the database only holds the path.
+    brand: await buildBrand(p),
     limits: toPlanLimits(planRow),
     usage,
     subscription,

@@ -12,6 +12,7 @@ import { blocksRouter } from './routes/blocks.js';
 import { datasetsRouter } from './routes/datasets.js';
 import { healthRouter } from './routes/health.js';
 import { internalRouter } from './routes/internal.js';
+import { brandingRouter } from './routes/branding.js';
 import { meRouter } from './routes/me.js';
 import { reportsRouter } from './routes/reports.js';
 import { workspacesRouter } from './routes/workspaces.js';
@@ -48,6 +49,7 @@ export function createApp(): Express {
   v1.use(datasetsRouter);
   v1.use(blocksRouter);
   v1.use(reportsRouter);
+  v1.use(brandingRouter);
 
   app.use('/api/v1', v1);
   app.use(notFoundHandler);
