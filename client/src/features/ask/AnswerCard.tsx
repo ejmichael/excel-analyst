@@ -40,11 +40,30 @@ interface AnswerCardProps {
   /** 2 for the newest answer, 3 inside the history list (under its own heading). */
   headingLevel?: 2 | 3;
   asking?: boolean;
-  onFollowUp: (question: string) => void;
+  /**
+   * 'report': inside a report. Same chart, narrative, checks and working, but no "Ask next", no feedback, delete or
+   * "Add to report", and "How this was calculated" starts closed.
+   */
+  mode?: 'answer' | 'report';
+  /** Shown instead of the answer's title (a report's heading_override). */
+  heading?: string;
+  onFollowUp?: (question: string) => void;
   onDeleted?: (id: string) => void;
 }
 
-export function AnswerCard({ block, dataset, newest = false, headingRef, headingLevel = 2, asking = false, onFollowUp, onDeleted }: AnswerCardProps) {
+export function AnswerCard({
+  block,
+  dataset,
+  newest = false,
+  headingRef,
+  headingLevel = 2,
+  asking = false,
+  mode = 'answer',
+  heading,
+  onFollowUp,
+  onDeleted,
+}: AnswerCardProps) {
+  const inReport = mode === 'report';
   const headingId = useId();
   const Heading = headingLevel === 3 ? 'h3' : 'h2';
   const failed = block.checks.filter((c) => !c.ok);
@@ -53,7 +72,7 @@ export function AnswerCard({ block, dataset, newest = false, headingRef, heading
     <article aria-labelledby={headingId} className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
       <header className="space-y-1">
         <Heading id={headingId} ref={headingRef} tabIndex={-1} className="text-xl font-semibold break-words outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          {block.title}
+          {heading || block.title}
         </Heading>
         <p className="text-sm text-muted-foreground break-words">
           <span className="sr-only">Question: </span>“{block.question}”
@@ -98,7 +117,7 @@ export function AnswerCard({ block, dataset, newest = false, headingRef, heading
 
       <BlockChart block={block} />
 
-      {block.follow_ups.length > 0 && (
+      {!inReport && onFollowUp && block.follow_ups.length > 0 && (
         <div className="space-y-2">
           <h3 className="font-sans text-sm font-semibold">Ask next</h3>
           <div className="flex flex-wrap gap-2">
@@ -111,9 +130,9 @@ export function AnswerCard({ block, dataset, newest = false, headingRef, heading
         </div>
       )}
 
-      <HowCalculated block={block} dataset={dataset} defaultOpen={newest} />
+      <HowCalculated block={block} dataset={dataset} defaultOpen={newest && !inReport} />
 
-      <AnswerActions block={block} dataset={dataset} onDeleted={onDeleted} />
+      {!inReport && <AnswerActions block={block} dataset={dataset} onDeleted={onDeleted} />}
     </article>
   );
 }

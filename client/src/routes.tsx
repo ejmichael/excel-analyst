@@ -9,6 +9,7 @@ import { ConsentPage } from '@/features/consent/ConsentPage';
 import { DatasetPage } from '@/features/datasets/DatasetPage';
 import { DatasetsPage } from '@/features/datasets/DatasetsPage';
 import { InlineLoading } from '@/components/PageStatus';
+import { ReportsPage } from '@/features/reports/ReportsPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { AppShell } from '@/features/shell/AppShell';
 import { LegalPlaceholderPage, NotFoundPage, PlaceholderPage } from '@/features/shell/pages';
@@ -57,7 +58,13 @@ export const routes: RouteObject[] = [
                 lazy: async () => ({ Component: (await import('@/features/ask/AskPage')).AskPage }),
                 hydrateFallbackElement: <InlineLoading label="Loading" />,
               },
-              { path: '/reports', element: <PlaceholderPage title="Reports" /> },
+              { path: '/reports', element: <ReportsPage /> },
+              {
+                path: '/reports/:id',
+                // Loaded on demand: report pages draw charts (Recharts).
+                lazy: async () => ({ Component: (await import('@/features/reports/ReportPage')).ReportPage }),
+                hydrateFallbackElement: <InlineLoading label="Loading" />,
+              },
               { path: '/templates', element: <PlaceholderPage title="Templates" /> },
               { path: '/settings', element: <SettingsPage /> },
             ],
