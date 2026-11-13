@@ -7,7 +7,7 @@ import {
   MAX_REPORT_BLOCKS,
   OTHER_WORKSPACE_MESSAGE,
   updateReportBody,
-  workspaceRuleError,
+  workspaceRuleRefusals,
 } from '../../src/services/reports.js';
 
 const ids = (n: number) => Array.from({ length: n }, () => randomUUID());
@@ -86,24 +86,37 @@ describe('the workspace rule', () => {
   const [d1, d2, other] = ids(3);
   const here = (id: string, dataset: string) => ({ id, dataset_id: dataset, workspace_id: ws });
 
+  const elsewhere = () => ({ id: randomUUID(), dataset_id: d2!, workspace_id: other! });
+  const orphan = () => ({ id: randomUUID(), dataset_id: null, workspace_id: null });
+
   it('blocks from datasets in the same workspace are allowed, from one or several datasets', () => {
-    expect(workspaceRuleError([here(randomUUID(), d1!), here(randomUUID(), d2!)], ws, null)).toBeNull();
+    expect(workspaceRuleRefusals([here(randomUUID(), d1!), here(randomUUID(), d2!)], ws, null)).toEqual([]);
   });
 
-  it('a block from a dataset in another workspace is refused (422 message)', () => {
-    const blocks = [here(randomUUID(), d1!), { id: randomUUID(), dataset_id: d2!, workspace_id: other! }];
-    expect(workspaceRuleError(blocks, ws, null)).toBe(OTHER_WORKSPACE_MESSAGE);
-    expect(workspaceRuleError(blocks, ws, new Set(blocks.map((b) => b.id)))).toBe(OTHER_WORKSPACE_MESSAGE);
+  it('one refused answer among valid ones gives one refusal at its position, with the message unchanged', () => {
+    const blocks = [here(randomUUID(), d1!), elsewhere(), here(randomUUID(), d1!)];
+    expect(workspaceRuleRefusals(blocks, ws, null)).toEqual([{ index: 1, message: OTHER_WORKSPACE_MESSAGE }]);
+    expect(workspaceRuleRefusals(blocks, ws, new Set(blocks.map((b) => b.id)))).toEqual([{ index: 1, message: OTHER_WORKSPACE_MESSAGE }]);
+    expect(OTHER_WORKSPACE_MESSAGE).toBe('Some of these answers come from a file in another workspace. A report can only hold answers from files in its own workspace.');
+  });
+
+  it('two refused answers give two refusals with the right positions, each with its own message', () => {
+    const blocks = [elsewhere(), here(randomUUID(), d1!), here(randomUUID(), d1!), orphan()];
+    expect(workspaceRuleRefusals(blocks, ws, null)).toEqual([
+      { index: 0, message: OTHER_WORKSPACE_MESSAGE },
+      { index: 3, message: DELETED_FILE_MESSAGE },
+    ]);
   });
 
   it('a block whose dataset was deleted is refused on create', () => {
-    expect(workspaceRuleError([{ id: randomUUID(), dataset_id: null, workspace_id: null }], ws, null)).toBe(DELETED_FILE_MESSAGE);
+    expect(workspaceRuleRefusals([orphan()], ws, null)).toEqual([{ index: 0, message: DELETED_FILE_MESSAGE }]);
+    expect(DELETED_FILE_MESSAGE).toBe('Some of these answers come from a file that has been deleted, so we cannot check which workspace they belong to. Remove them from the report.');
   });
 
   it('on update it is allowed only when already in the report', () => {
-    const orphan = { id: randomUUID(), dataset_id: null, workspace_id: null };
-    expect(workspaceRuleError([orphan], ws, new Set([orphan.id]))).toBeNull();
-    expect(workspaceRuleError([orphan], ws, new Set([randomUUID()]))).toBe(DELETED_FILE_MESSAGE);
+    const o = orphan();
+    expect(workspaceRuleRefusals([o], ws, new Set([o.id]))).toEqual([]);
+    expect(workspaceRuleRefusals([here(randomUUID(), d1!), o], ws, new Set([randomUUID()]))).toEqual([{ index: 1, message: DELETED_FILE_MESSAGE }]);
   });
 });
 

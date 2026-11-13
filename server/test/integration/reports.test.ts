@@ -143,7 +143,12 @@ describe('POST /reports', () => {
     const { count: reportsBefore } = await supabaseAdmin().from('reports').select('id', { count: 'exact', head: true }).eq('owner_id', a.id);
     const res = await createReport(a, { workspace_id: wsA, title: 'Mixed clients', block_ids: [blocksA[0]!.id, otherWsBlock.id] });
     expect(res.status).toBe(422);
-    expect(res.body.error).toMatchObject({ code: 'validation_failed', message: OTHER_WORKSPACE_MESSAGE, details: { fields: [{ location: 'body', path: 'block_ids' }] } });
+    // One refused answer among valid ones: one entry, at its 0-based position in block_ids, with the unchanged message.
+    expect(res.body.error).toEqual({
+      code: 'validation_failed',
+      message: OTHER_WORKSPACE_MESSAGE,
+      details: { fields: [{ location: 'body', path: 'block_ids.1', message: OTHER_WORKSPACE_MESSAGE }] },
+    });
     expect(await countEvents(a.id, 'report')).toBe(before);
     const { count: reportsAfter } = await supabaseAdmin().from('reports').select('id', { count: 'exact', head: true }).eq('owner_id', a.id);
     expect(reportsAfter).toBe(reportsBefore);
@@ -258,7 +263,11 @@ describe('PATCH /reports/:id', () => {
       .set(bearer(a))
       .send({ blocks: [{ block_id: blocksA[1]!.id }, { block_id: otherWsBlock.id }] });
     expect(refused.status).toBe(422);
-    expect(refused.body.error.message).toBe(OTHER_WORKSPACE_MESSAGE);
+    expect(refused.body.error).toEqual({
+      code: 'validation_failed',
+      message: OTHER_WORKSPACE_MESSAGE,
+      details: { fields: [{ location: 'body', path: 'blocks.1.block_id', message: OTHER_WORKSPACE_MESSAGE }] },
+    });
     expect(ids(await getReport(a, report.id))).toEqual(old);
     // Inject a failure inside the transaction: the SQL function first applies the new title, then fails on a block id
     // that does not exist. The title change must roll back with it, and the blocks stay as they were.
@@ -300,6 +309,25 @@ describe('PATCH /reports/:id', () => {
     const added = await request(app).patch(api(`/reports/${report.id}`)).set(bearer(a)).send({ blocks: [{ block_id: blocksA[0]!.id }, { block_id: orphan.id }] });
     expect(added.status).toBe(422);
     expect(added.body.error.message).toBe(DELETED_FILE_MESSAGE);
+    expect(added.body.error.details.fields).toEqual([{ location: 'body', path: 'blocks.1.block_id', message: DELETED_FILE_MESSAGE }]);
+
+    // Two refused answers in one request: two entries with the right positions, each with its own message.
+    const twoOnCreate = await createReport(a, { workspace_id: wsA, title: 'Two refused', block_ids: [blocksA[0]!.id, otherWsBlock.id, orphan.id] });
+    expect(twoOnCreate.status).toBe(422);
+    expect(twoOnCreate.body.error.message).toBe(OTHER_WORKSPACE_MESSAGE);
+    expect(twoOnCreate.body.error.details.fields).toEqual([
+      { location: 'body', path: 'block_ids.1', message: OTHER_WORKSPACE_MESSAGE },
+      { location: 'body', path: 'block_ids.2', message: DELETED_FILE_MESSAGE },
+    ]);
+    const twoOnPatch = await request(app)
+      .patch(api(`/reports/${report.id}`))
+      .set(bearer(a))
+      .send({ blocks: [{ block_id: otherWsBlock.id }, { block_id: blocksA[0]!.id }, { block_id: orphan.id }] });
+    expect(twoOnPatch.status).toBe(422);
+    expect(twoOnPatch.body.error.details.fields).toEqual([
+      { location: 'body', path: 'blocks.0.block_id', message: OTHER_WORKSPACE_MESSAGE },
+      { location: 'body', path: 'blocks.2.block_id', message: DELETED_FILE_MESSAGE },
+    ]);
   });
 });
 

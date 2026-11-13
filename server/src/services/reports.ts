@@ -75,20 +75,35 @@ export interface BlockPlacement {
  * A bookkeeper's workspaces are their clients, so one client's numbers must never end up in another client's report.
  * A block whose dataset exists must be from a dataset in the report's workspace. A block whose dataset was deleted
  * cannot be checked: refused on create (`currentMembers` null), allowed on update only if already in the report.
- * Returns the user-facing message, or null when every block is allowed.
+ * `blocks` are in request order. Returns one refusal per refused block (its 0-based position in the request and the
+ * user-facing message), in request order; empty when every block is allowed.
  */
-export function workspaceRuleError(blocks: BlockPlacement[], workspaceId: string, currentMembers: Set<string> | null): string | null {
-  if (blocks.some((b) => b.dataset_id !== null && b.workspace_id !== workspaceId)) return OTHER_WORKSPACE_MESSAGE;
-  if (blocks.some((b) => b.dataset_id === null && !currentMembers?.has(b.id))) return DELETED_FILE_MESSAGE;
-  return null;
+export function workspaceRuleRefusals(
+  blocks: BlockPlacement[],
+  workspaceId: string,
+  currentMembers: Set<string> | null,
+): Array<{ index: number; message: string }> {
+  return blocks.flatMap((b, index) => {
+    if (b.dataset_id !== null && b.workspace_id !== workspaceId) return [{ index, message: OTHER_WORKSPACE_MESSAGE }];
+    if (b.dataset_id === null && !currentMembers?.has(b.id)) return [{ index, message: DELETED_FILE_MESSAGE }];
+    return [];
+  });
 }
 
-const ruleFailure = (message: string, path: 'block_ids' | 'blocks') =>
-  new AppError('validation_failed', message, { fields: [{ location: 'body', path, message }] });
+/**
+ * The 422 for the workspace rule: one details.fields entry per refused answer, with the path style of the validation
+ * errors (`block_ids.<i>` on POST, `blocks.<i>.block_id` on PATCH). The top-level message is the other-workspace one
+ * when any answer is from another workspace, otherwise the deleted-file one.
+ */
+function ruleFailure(refusals: Array<{ index: number; message: string }>, field: 'block_ids' | 'blocks'): AppError {
+  const fields = refusals.map((r) => ({ location: 'body' as const, path: field === 'block_ids' ? `block_ids.${r.index}` : `blocks.${r.index}.block_id`, message: r.message }));
+  const message = refusals.some((r) => r.message === OTHER_WORKSPACE_MESSAGE) ? OTHER_WORKSPACE_MESSAGE : DELETED_FILE_MESSAGE;
+  return new AppError('validation_failed', message, { fields });
+}
 
 /**
  * Loads the caller's blocks (404 with no hint which, if any is not theirs) and applies the workspace rule.
- * `path` names the body field in the 422 details.
+ * `blockIds` are in request order; `path` names the body field in the 422 details.
  */
 export async function assertBlocksAllowed(
   db: SupabaseClient,
@@ -119,13 +134,14 @@ export async function assertBlocksAllowed(
     throwIfDbError('reports: datasets', dsError);
     for (const d of datasets ?? []) workspaceOf.set(d.id, d.workspace_id);
   }
-  const placements = (blocks ?? []).map((b) => ({
-    id: b.id,
-    dataset_id: b.dataset_id,
-    workspace_id: b.dataset_id ? (workspaceOf.get(b.dataset_id) ?? null) : null,
-  }));
-  const message = workspaceRuleError(placements, workspaceId, currentMembers);
-  if (message) throw ruleFailure(message, path);
+  // In request order, so each refusal carries the answer's position in the request.
+  const byId = new Map((blocks ?? []).map((b) => [b.id, b]));
+  const placements = blockIds.map((id) => {
+    const b = byId.get(id)!;
+    return { id, dataset_id: b.dataset_id, workspace_id: b.dataset_id ? (workspaceOf.get(b.dataset_id) ?? null) : null };
+  });
+  const refusals = workspaceRuleRefusals(placements, workspaceId, currentMembers);
+  if (refusals.length > 0) throw ruleFailure(refusals, path);
 }
 
 // ---------- reads ----------

@@ -79,9 +79,9 @@ Every warning or error message that points the user to the parse dialog names it
 | Method and path | Request | Response | Notes |
 |---|---|---|---|
 | GET `/reports?workspace_id=&limit=&offset=` | | `Paged<Report>` | `workspace_id` required |
-| POST `/reports` | `CreateReportRequest` | 201 `ReportDetail` | Flow C. Limit `max_reports_per_month`. A missing or malformed `workspace_id` is 422 before the 404 and 402 checks. Every `block_id` must be the caller's; 1 to 30 distinct ids. `title` trimmed, 1 to 120 characters; `subtitle` up to 200; `period_label` up to 60 (optional text that is empty after trimming is stored as null; 422 otherwise) |
+| POST `/reports` | `CreateReportRequest` | 201 `ReportDetail` | Flow C. Limit `max_reports_per_month`. A missing or malformed `workspace_id` is 422 before the 404 and 402 checks. Every `block_id` must be the caller's; 1 to 30 distinct ids. `title` trimmed, 1 to 120 characters; `subtitle` up to 200; `period_label` up to 60 (optional text that is empty after trimming is stored as null; 422 otherwise). Workspace rule: an answer whose file still exists must come from a file in the report's workspace; an answer whose file was deleted is refused on create and kept on update only if already in that report. Otherwise 422 `validation_failed` with one `details.fields` entry per refused answer (`location: "body"`, the rule message, `path` = `block_ids.<i>` where `<i>` is its 0-based position in the request) |
 | GET `/reports/:id` | | `ReportDetail` | `watermark` is true when the owner's plan is `free` |
-| PATCH `/reports/:id` | `UpdateReportRequest` | `ReportDetail` | `blocks` replaces membership and order. Same lengths as POST; `notes` up to 2000; `blocks` 1 to 30 distinct, `heading_override` up to 120 or null; an empty body is 422 |
+| PATCH `/reports/:id` | `UpdateReportRequest` | `ReportDetail` | `blocks` replaces membership and order. Same lengths as POST; `notes` up to 2000; `blocks` 1 to 30 distinct, `heading_override` up to 120 or null; an empty body is 422. The workspace rule of POST applies to `blocks`, with `path` = `blocks.<i>.block_id` |
 | DELETE `/reports/:id` | | `Deleted` | Also revokes (deletes) its share links |
 | GET `/reports/:id/export.xlsx` | | file | See "Exports". Counts as an `export` |
 
