@@ -15,6 +15,12 @@ const ANSWER_FILES = [
   'AnswerHistory.tsx',
   'HowCalculated.tsx',
   'AskPage.tsx',
+  // Reports show the same answers (Part 4).
+  '../reports/ReportPage.tsx',
+  '../reports/ReportHeader.tsx',
+  '../reports/ReportsPage.tsx',
+  '../reports/ReportTray.tsx',
+  '../reports/AddAnswersDialog.tsx',
 ];
 
 const FORBIDDEN: Array<[RegExp, string]> = [
