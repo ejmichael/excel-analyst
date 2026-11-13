@@ -16,5 +16,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // Whole-page tests (routes, mocks, charts) are slow under the full parallel run.
+    testTimeout: 30_000,
   },
 });

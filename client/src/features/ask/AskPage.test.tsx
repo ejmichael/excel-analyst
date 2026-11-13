@@ -79,7 +79,7 @@ describe('Ask page', () => {
     newest = screen.getByRole('region', { name: 'Newest answer' });
     expect(within(newest).getByRole('button', { name: 'Show the rows this is based on' })).toBeInTheDocument();
     expect(within(newest).queryByText(/Showing 1 to/)).not.toBeInTheDocument();
-  }, 15_000);
+  });
 
   it('shows cannot_answer in a panel with the suggestions, and keeps the question', async () => {
     const { datasetId } = await signInDemo();
