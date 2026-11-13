@@ -45,6 +45,14 @@ export function validate(schemas: Schemas): RequestHandler {
   };
 }
 
+/** Same 422 shape as validate(), for a route that must run other checks before validating (for example POST /reports). */
+export function parseOrThrow<S extends z.ZodType>(schema: S, input: unknown, location: Location = 'body'): z.infer<S> {
+  const result = schema.safeParse(input);
+  if (result.success) return result.data;
+  const fields: FieldError[] = result.error.issues.map((issue) => ({ location, path: issue.path.join('.'), message: issue.message }));
+  throw new AppError('validation_failed', 'Some fields are not valid.', { fields });
+}
+
 export const validQuery = <T>(req: Request): T => req.valid?.query as T;
 export const validParams = <T>(req: Request): T => req.valid?.params as T;
 

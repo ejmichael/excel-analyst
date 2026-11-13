@@ -1,3 +1,4 @@
+import compression from 'compression';
 import cors from 'cors';
 import express, { Router, type Express } from 'express';
 import helmet from 'helmet';
@@ -12,6 +13,7 @@ import { datasetsRouter } from './routes/datasets.js';
 import { healthRouter } from './routes/health.js';
 import { internalRouter } from './routes/internal.js';
 import { meRouter } from './routes/me.js';
+import { reportsRouter } from './routes/reports.js';
 import { workspacesRouter } from './routes/workspaces.js';
 
 export function createApp(): Express {
@@ -26,6 +28,8 @@ export function createApp(): Express {
   // The client runs on another origin, so headers it must read have to be exposed: Retry-After (429, "wait N seconds")
   // and Content-Disposition (the export file name). Without this the browser hides them.
   app.use(cors({ origin: config.CLIENT_URL, exposedHeaders: ['Retry-After', 'Content-Disposition'] }));
+  // JSON can be large (a report holds up to 30 answers of up to 500 rows); compress when the client accepts it.
+  app.use(compression());
   app.use(httpLogger);
   app.use(express.json({ limit: '100kb' }));
   app.use(ipRateLimit);
@@ -43,6 +47,7 @@ export function createApp(): Express {
   v1.use(workspacesRouter);
   v1.use(datasetsRouter);
   v1.use(blocksRouter);
+  v1.use(reportsRouter);
 
   app.use('/api/v1', v1);
   app.use(notFoundHandler);
