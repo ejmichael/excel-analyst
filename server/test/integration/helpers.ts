@@ -141,6 +141,8 @@ async function removeUser(id: string): Promise<string | null> {
   try {
     const paths = await listOwnerObjects(id);
     if (paths.length > 0) orThrow(await supabaseAdmin().storage.from(env().STORAGE_BUCKET_DATASETS).remove(paths));
+    // Logos (Part 4): <owner_id>/logo.<ext> in the branding bucket.
+    orThrow(await supabaseAdmin().storage.from(env().STORAGE_BUCKET_BRANDING).remove(['png', 'jpg', 'webp'].map((e) => `${id}/logo.${e}`)));
   } catch (err) {
     console.error(`[integration cleanup] storage for user ${id}: ${describeError(err)}`);
   }

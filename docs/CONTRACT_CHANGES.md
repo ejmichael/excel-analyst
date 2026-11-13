@@ -77,3 +77,10 @@ Entry format:
 - Proposed shape: server: `cors({ origin: CLIENT_URL, exposedHeaders: ['Retry-After', 'Content-Disposition'] })`. No contract text change needed beyond noting that these two headers are exposed to the client.
 - Affects: `GET /blocks/:id/export.csv` (and the XLSX export in S4), every 429.
 - Status: APPLIED (approved by the user 2026-11-12; server CORS now sets `exposedHeaders: ['Retry-After', 'Content-Disposition']`, tested in `server/test/unit/cors.test.ts`)
+
+## 2026-11-13: Two S3 behaviours the contract does not pin down (from: server)
+- What: (1) `POST /me/logo` with a PNG, JPEG or WebP whose structure is cut short or broken (for example a truncated PNG) has no listed code. The server answers 415 `file_unsupported` ("This image looks damaged or incomplete. Save it again and upload it."). (2) The prompt's check order for `POST /reports` is workspace (404), limit (402), then body (422). When `workspace_id` is missing or not a UUID the workspace cannot be looked up, so the server answers 422 first in that case only.
+- Why: both are implemented and tested this way; the contract should say so, or the user may prefer 422 for (1).
+- Proposed shape: add to the `POST /me/logo` row: "a damaged image is 415 `file_unsupported`"; add to the `POST /reports` row: "a missing or malformed `workspace_id` is 422 before the 404 and 402 checks".
+- Affects: `POST /me/logo`, `POST /reports`.
+- Status: PROPOSED

@@ -291,12 +291,12 @@ describe("another user's blocks and datasets are 404 on every endpoint", () => {
 
 describe('DELETE /blocks/:id', () => {
   it('is 409 while the block is pinned in a report, then deletes once unpinned', async () => {
-    const { data: report } = await supabaseAdmin().from('reports').insert({ owner_id: a.id, workspace_id: ws, title: 'Pinned' }).select('id').single();
-    await supabaseAdmin().from('report_blocks').insert({ report_id: report!.id, block_id: block.id, owner_id: a.id, position: 0 });
+    // A real report made through the API (Part 4).
+    const report = (await request(app).post(api('/reports')).set(bearer(a)).send({ workspace_id: ws, title: 'Pinned', block_ids: [block.id] }).expect(201)).body.data as { id: string };
     const pinned = await request(app).delete(api(`/blocks/${block.id}`)).set(bearer(a));
     expect(pinned.status).toBe(409);
     expect(pinned.body.error.code).toBe('conflict');
-    await supabaseAdmin().from('reports').delete().eq('id', report!.id); // cascades to report_blocks
+    await request(app).delete(api(`/reports/${report.id}`)).set(bearer(a)).expect(200); // the report goes, the block stays
     const res = await request(app).delete(api(`/blocks/${block.id}`)).set(bearer(a)).expect(200);
     expect(res.body).toEqual({ data: { deleted: true } });
     expect((await request(app).get(api(`/blocks/${block.id}`)).set(bearer(a))).status).toBe(404);

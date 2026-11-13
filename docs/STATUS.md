@@ -9,7 +9,7 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 | S0 | Foundation, auth, consent, workspaces, me | DONE | DONE |
 | S1 | Upload, parse, profile, preview | DONE | DONE (tested against the real server) |
 | S2 | Ask, verify, source rows | DONE | DONE (tested against the real server) |
-| S3 | Reports and branding | TODO | DONE (mocks; server S3 not DONE yet) |
+| S3 | Reports and branding | DONE | DONE (mocks; server S3 not DONE yet) |
 | S4 | Export and share | TODO | TODO |
 | S5 | Templates and re-runs | TODO | TODO |
 | S6 | Plans, billing, hardening, handover | TODO | TODO |
@@ -39,13 +39,13 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 | S2 | GET `/blocks/:id/export.csv` | DONE |
 | S2 | POST `/blocks/:id/feedback` | DONE |
 | S2 | DELETE `/blocks/:id` | DONE |
-| S3 | GET `/reports` | TODO |
-| S3 | POST `/reports` | TODO |
-| S3 | GET `/reports/:id` | TODO |
-| S3 | PATCH `/reports/:id` | TODO |
-| S3 | DELETE `/reports/:id` | TODO |
-| S3 | POST `/me/logo` | TODO |
-| S3 | DELETE `/me/logo` | TODO |
+| S3 | GET `/reports` | DONE |
+| S3 | POST `/reports` | DONE |
+| S3 | GET `/reports/:id` | DONE |
+| S3 | PATCH `/reports/:id` | DONE |
+| S3 | DELETE `/reports/:id` | DONE |
+| S3 | POST `/me/logo` | DONE |
+| S3 | DELETE `/me/logo` | DONE |
 | S4 | GET `/reports/:id/export.xlsx` | TODO |
 | S4 | GET `/reports/:id/share-links` | TODO |
 | S4 | POST `/reports/:id/share-links` | TODO |
@@ -78,7 +78,7 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 - **Supabase keys.** The project uses the new publishable/secret keys. `VITE_SUPABASE_ANON_KEY` takes the publishable key (`sb_publishable_...`); supabase-js treats it like the old anon key.
 - **Bootstrap.** Call `GET /me` right after sign-in. The profile and the default workspace ("My workspace") already exist (DB trigger), so there is no "create profile" step. If `consent_accepted` is false, route to the consent screen. Every call other than `GET /me` and `PATCH /me` returns 403 `consent_required` until `PATCH /me { accept_terms: true }`.
 - **`PATCH /me`** returns the full `Me`. An empty body is 422. `full_name` and `business_name` are trimmed, 1 to 120 characters, and `null` clears them. Sending `accept_terms: true` again is harmless (the first timestamp is kept); `accept_terms: false` is 422.
-- **Brand colour.** On `free`, `brand_color` is 402 `plan_limit` with `{ limit_key: 'branding', limit: 0, used: 0, upgrade_to: 'solo' }`, and nothing in that request is saved, including other fields sent alongside it. `brand.logo_url` is always `null` until S3.
+- **Brand colour.** On `free`, `brand_color` is 402 `plan_limit` with `{ limit_key: 'branding', limit: 0, used: 0, upgrade_to: 'solo' }`, and nothing in that request is saved, including other fields sent alongside it. `brand.logo_url` is a signed URL (see S3 below), or `null`.
 - **Workspaces.** The list is ordered default first, then oldest first. A second workspace on `free` is 402 with `{ limit_key: 'max_workspaces', limit: 1, used: 1, upgrade_to: 'practice' }` (`solo` also allows only 1). Deleting the default workspace is 409 `conflict`. Another user's id, or a malformed id, is 404.
 - **422 `validation_failed`.** `details` is `{ fields: Array<{ location: 'body' | 'query' | 'params', path: string, message: string }> }`. `path` is the dotted field path (e.g. `name`), and empty for whole-object errors. Map it to form fields with `location === 'body'`. Unknown fields are always rejected. Malformed JSON and bodies over 100 KB are also 422 `validation_failed` (no `details`).
 - **429 `rate_limited`** carries a `Retry-After` header in seconds. The limit is 300 per minute per user.
@@ -132,6 +132,16 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 - **Delete** is 409 `conflict` while the block is pinned in a report.
 - **2026-11-12. Headers readable cross-origin.** CORS now exposes `Retry-After` and `Content-Disposition`, so the client can show the wait in seconds and use the export's server file name.
 - **2026-11-12. Wording.** Every warning or message that points to the parse dialog now says "Check how we read your file"; use that as the dialog's button label.
+- **S3 (2026-11-13). Reports.** All S3 endpoints are DONE and tested against the real server.
+  - Lengths (also in API_CONTRACT): `title` trimmed 1 to 120; `subtitle` up to 200; `period_label` up to 60; `notes` up to 2000 (PATCH only; unknown on POST is 422); `heading_override` up to 120 or null; 1 to 30 distinct blocks (a duplicate is 422 "Each answer can appear only once in a report."). Optional text that is empty after trimming is stored as `null`. Bodies are strict (unknown fields are 422); an empty PATCH is 422.
+  - POST check order: a missing or malformed `workspace_id` is 422 first (it cannot be looked up); then 404 if the workspace is not the caller's, 402 `max_reports_per_month`, then the rest of the body (422), then the blocks (404 "Answer not found." if any block is not the caller's, with no hint which). The `report` usage event is written only after the report is saved; PATCH never counts.
+  - Workspace rule: 422 `validation_failed` with `details.fields[0].path` = `block_ids` (POST) or `blocks` (PATCH). Messages, word for word: other workspace: "Some of these answers come from a file in another workspace. A report can only hold answers from files in its own workspace." Deleted file: "Some of these answers come from a file that has been deleted, so we cannot check which workspace they belong to. Remove them from the report." A block whose file was deleted can stay in a report it is already in (PATCH keeps it) but cannot be added to a new or another report. Blocks from several files in the same workspace are fine.
+  - PATCH `blocks` replaces membership, order and headings in one transaction; positions are renumbered from 0 in the order sent. Any failure leaves the previous blocks and fields as they were.
+  - `ReportDetail.blocks` come in `position` order with the full `Block`. `brand` is the owner's current brand; `watermark` is true on `free`; `comparison` is always `null` until S5. `GET /reports` returns newest first with `block_count`; `workspace_id` is required (422 without it, 404 for another user's).
+  - DELETE removes the report and its `report_blocks`; the answers stay. Deleting an answer is 409 `conflict` while it is in any report.
+  - Payload size: a 30-answer report with 500 rows per answer (the maximum) is about 2.2 MB of JSON; with compression (now on for all JSON) it is about 296 KB gzip or 115 KB brotli. Browsers send `Accept-Encoding` and decompress automatically.
+- **S3 (2026-11-13). Logo.** `POST /me/logo` (multipart, field `file`) and `DELETE /me/logo` return `Brand`. Both need `limits.branding`: on `free` they are 402 with `{ limit_key: 'branding', limit: 0, used: 0, upgrade_to: 'solo' }` (checked before the file is read). The type comes from the file's bytes, not its name: PNG, JPEG and WebP only; SVG and GIF are 415 `file_unsupported`; a damaged or incomplete image is 415 ("This image looks damaged or incomplete..."); over 1 MB is 413 `file_too_large`; width or height over 4000 px or under 16 px is 422 (`path: "file"`). A new logo replaces the old one.
+  - `brand.logo_url` (in `Me` and `ReportDetail`) is a signed URL that **expires after 1 hour**. Refetch `/me` or the report rather than caching the URL; if an image fails to load after a long session, refetch. It is `null` when there is no logo.
 - **2026-11-12. Reparse.** Only options sent are applied; any option left out is detected again (not carried over). Send the full set to keep earlier choices. `header_row - 1` is the number of lines skipped (blank included); `preamble_lines` lists only non-blank ones.
 
 ## Known issues and decisions
@@ -183,3 +193,7 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 - **2026-11-13 (S2): reconcile false-alarm guard** (user decision). Before the check runs, `server/src/services/analysis/reconcileGuard.ts` walks DuckDB's parse tree of the main SQL to where the reconcile column is computed (through CTEs and subqueries). The planned reconcile is discarded, and the block gets no `total_reconciles` check, when the column is a `percent`, a COUNT(DISTINCT) or any DISTINCT aggregate, AVG/MIN/MAX/MEDIAN/STDDEV and similar, a ratio or other arithmetic, or a window value. It is also discarded for ROLLUP/CUBE/GROUPING SETS, HAVING/QUALIFY or an outer WHERE that drops groups, an OFFSET, a LIMIT inside a CTE or subquery, or a top-level LIMIT the result fills (a top-N). ROUND, CAST and COALESCE(x, 0) around SUM/COUNT are kept. The stored `blocks.reconcile` is then null, and the reason category goes in the `question` usage event's `meta.reconcile_skipped`. Reconcile `expected`/`actual` are stored rounded to 6 decimals (no float noise).
 - **2026-11-13 (S2): real-model reconcile stress run** (20 questions: the 12 plus 8 reconcile cases, one on a synthetic contacts file with 6 blank job titles). All 8 new answers matched the hand-computed values; 8 reconciles were planned and all passed (including filtered sums, count by card type and the blank-title count, 40 = 40); none was discarded in this run because the planner did not plan one for the distinct-count, average or top-N questions. One flag: the injection question's narrator invented `{{total_orders}}` on both attempts (numbers_from_data, a real rule break). Planner avg 2 614 in / 517 out, $0.0104, 3.7 s; narrator avg 1 806 in / 210 out, $0.0003, 1.5 s; per question $0.0112, median 4.9 s, slowest 9.7 s.
 - **2026-11-12 (S2): why repairs happen.** A planner repair logs `meta.reason` and a narrator retry logs `meta.reasons` in `usage_events`, as fixed categories only (`duckdb_parse_error`, `unknown_column`, `sql_rejected`, `missing_value_format`, `unknown_chart_column`, `plan_schema_invalid`, `source_filter_<category>`, `free_standing_number`, `missing_row`, ...). Never SQL, values or error text. Count them with `select meta->>'reason', count(*) from usage_events where meta->>'purpose' = 'repair' group by 1`.
+- **2026-11-13 (S3): report writes are SQL functions.** Migration `db/migrations/20261113_01_report_functions.sql` (run by the user on the dev project on 2026-11-13; run it on every other environment) adds `create_report_with_blocks` and `update_report_with_blocks`. Each call is one transaction and re-checks ownership; only the service role may execute them (a signed-in user's token gets 42501 permission denied, tested).
+- **2026-11-13 (S3): logo storage.** Private bucket `branding`, object `<owner_id>/logo.<png|jpg|webp>`; the path is built from the owner id only. `profiles.brand_logo_path` holds the path, never a signed URL. A logo with another extension is deleted on upload. Test images are in `server/test/unit/logos/` (made with ffmpeg). Integration cleanup also removes test users' logos.
+- **2026-11-13 (S3): response compression.** `compression` 1.8.2 (expressjs) on every response, before the logger. Measured on a 30 x 500-row ReportDetail with varied rows: identity 2 172 206 B, gzip 295 919 B, brotli 114 973 B.
+- **2026-11-13: npm audit.** 2 moderate findings, both one advisory: `uuid` 8.3.2 (GHSA-w5hq-g745-h8pq, missing buffer bounds check in v3/v5/v6 when `buf` is passed), pulled in by `exceljs` 4.4.0, a dev dependency used only to build test workbooks. It was there before Part 4 and does not come from `compression`. The only offered fix (`--force`) downgrades exceljs to 3.4.0 (breaking); not applied.
