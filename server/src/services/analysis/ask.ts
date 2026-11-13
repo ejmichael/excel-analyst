@@ -277,7 +277,7 @@ export async function ask(input: AskInput, deps: AskDeps): Promise<AskResult> {
         ...narratorReq,
         followUps: [
           { role: 'assistant', content: JSON.stringify(narrative) },
-          { role: 'user', content: narratorRetryMessage(rendered.problems) },
+          { role: 'user', content: narratorRetryMessage(rendered.problems, columns.map((c) => c.name), Math.min(rows.length, 50)) },
         ],
       },
       // Categories only (for example free_standing_number); never the text or values.

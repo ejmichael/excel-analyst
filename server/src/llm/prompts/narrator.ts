@@ -12,6 +12,7 @@ You must NOT write any number yourself. Every number, amount, count or percentag
 - {{rows}} is the total number of rows in the result.
 - {{r0.column_name}} is the value in the first result row for that column; {{r1.column_name}} the second row, and so on (up to row 49).
 Use only column names from the result. Refer to a text value (a category, a month name) by writing its token too, for example {{r0.category}}.
+Only use tokens for columns that appear in the result column list. Never invent a token name. If you want to mention a count of rows, use {{rows}}.
 Do not do arithmetic: if you want a difference or a share, it must already be a column in the result; otherwise do not mention it.
 Never write a currency symbol or currency word next to a token. A token for a rand amount already includes the R and the formatting: write {{r0.revenue}}, never R{{r0.revenue}}, {{r0.revenue}} ZAR or {{r0.revenue}} rand.
 Never mention rows, the query, the result or the data. Say what the figures mean for the business (for example which store earned the most) instead of describing where the numbers came from. Use {{rows}} only when the question is about how many records there are.
@@ -43,5 +44,13 @@ export type NarrativeOutput = z.infer<typeof narrativeSchema>;
 
 export const NARRATOR_MAX_TOKENS = 500;
 
-/** The retry turn (LLM_PROMPTS section 3). */
-export const narratorRetryMessage = (problems: string[]) => `Your previous text broke these rules: ${problems.join('; ')}. Rewrite it.`;
+/**
+ * The retry turn (LLM_PROMPTS section 3): the problems, then the exact tokens this result allows. `columns` are the
+ * result column names (SQL aliases, never cell values); `rowsShown` is how many result rows the tokens can reach.
+ */
+export const narratorRetryMessage = (problems: string[], columns: string[], rowsShown: number) => {
+  const last = Math.max(0, Math.min(rowsShown, 50) - 1);
+  const tokens = ['{{rows}}', ...columns.map((c) => `{{r0.${c}}}`)].join(', ');
+  const rowsNote = last > 0 ? ` (use r1, r2, ... up to r${last} for later rows)` : '';
+  return `Your previous text broke these rules: ${problems.join('; ')}. Rewrite it. The only valid tokens for this result are: ${tokens}${rowsNote}.`;
+};

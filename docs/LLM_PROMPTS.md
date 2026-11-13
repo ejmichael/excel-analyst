@@ -151,6 +151,7 @@ You must NOT write any number yourself. Every number, amount, count or percentag
 - {{rows}} is the total number of rows in the result.
 - {{r0.column_name}} is the value in the first result row for that column; {{r1.column_name}} the second row, and so on (up to row 49).
 Use only column names from the result. Refer to a text value (a category, a month name) by writing its token too, for example {{r0.category}}.
+Only use tokens for columns that appear in the result column list. Never invent a token name. If you want to mention a count of rows, use {{rows}}.
 Do not do arithmetic: if you want a difference or a share, it must already be a column in the result; otherwise do not mention it.
 Never write a currency symbol or currency word next to a token. A token for a rand amount already includes the R and the formatting: write {{r0.revenue}}, never R{{r0.revenue}}, {{r0.revenue}} ZAR or {{r0.revenue}} rand.
 Never mention rows, the query, the result or the data. Say what the figures mean for the business (for example which store earned the most) instead of describing where the numbers came from. Use {{rows}} only when the question is about how many records there are.
@@ -185,7 +186,8 @@ Tool `write_narrative`:
 ```
 Server: first, for each token whose column `value_format` is `zar`, remove an immediately preceding standalone "R" or "ZAR" (any case,
 optional space) and an immediately following "ZAR", "rand" or "rands" (any case, whole word), so the amount is not doubled. Then render tokens (API_CONTRACT "Narrative tokens"), run the `numbers_from_data` check, retry once with the extra user line
-`Your previous text broke these rules: {{list of unresolved tokens or free-standing numbers}}. Rewrite it.` If it still fails, store the block as `flagged` with the best attempt (free-standing numbers left in place, unresolved tokens replaced by "[?]").
+`Your previous text broke these rules: {{list of unresolved tokens or free-standing numbers}}. Rewrite it. The only valid tokens for this result are: {{rows}}, {{r0.<each result column name>}} (use r1, r2, ... up to r{{last shown row}} for later rows).`
+(The "(use r1 ...)" part is left out when the result has a single row.) If it still fails, store the block as `flagged` with the best attempt (free-standing numbers left in place, unresolved tokens replaced by "[?]").
 
 ---
 ## 4. Cost control

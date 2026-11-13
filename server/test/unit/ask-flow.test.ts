@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetLearnedCaps } from '../../src/config/models.js';
 import { createLlmClient, type LlmClient, LlmError, openRouterProvider, type ToolCallRequest } from '../../src/llm/client.js';
+import { narratorRetryMessage } from '../../src/llm/prompts/narrator.js';
 import { ask, AskLlmFailure, type AskDeps, type AskInput, CANNOT_BUILD_QUERY } from '../../src/services/analysis/ask.js';
 import { UNRESOLVED } from '../../src/services/analysis/tokens.js';
 import { profileFile } from '../../src/services/parsing/pipeline.js';
@@ -182,9 +183,29 @@ describe('ask: narrator', () => {
     expect(purposes()).toEqual(['plan', 'narrate', 'narrate']);
     expect(recordLlm.mock.calls[2]![2]).toMatchObject({ retry: true, reasons: 'missing_row,free_standing_number' });
     const retryLine = requests[2]!.followUps![1]!.content;
-    expect(retryLine).toMatch(/^Your previous text broke these rules: .*\. Rewrite it\.$/);
+    expect(retryLine).toMatch(/^Your previous text broke these rules: .*\. Rewrite it\. The only valid tokens for this result are: .*\.$/);
     expect(retryLine).toContain('"99,284.58"');
     expect(retryLine).toContain('{{r9.net}}');
+    // The exact valid tokens for this result (3 stores, columns store and net).
+    expect(retryLine).toContain('The only valid tokens for this result are: {{rows}}, {{r0.store}}, {{r0.net}} (use r1, r2, ... up to r2 for later rows).');
+  });
+
+  it('an invented token gets the valid-token list in the retry (user decision 2026-11-13)', async () => {
+    const invented = { narrative_template: '{{r0.store}} led out of {{total_orders}} orders.', follow_ups: [] };
+    const { client, requests } = fakeLlm({ plan_analysis: [goodPlan()], write_narrative: [invented, goodNarrative] });
+    const r = await ask(input, { llm: client, recordLlm });
+    if (r.kind !== 'answered') throw new Error('expected an answer');
+    const retryLine = requests[2]!.followUps![1]!.content;
+    expect(retryLine).toContain('unknown token {{total_orders}}');
+    expect(retryLine).toContain('{{rows}}, {{r0.store}}, {{r0.net}}');
+    expect(retryLine).not.toContain('{{r0.total_orders}}');
+  });
+
+  it('the retry message for a single-row result has no row range', () => {
+    expect(narratorRetryMessage(['unknown token {{x}}'], ['money_in', 'money_out'], 1)).toBe(
+      'Your previous text broke these rules: unknown token {{x}}. Rewrite it. The only valid tokens for this result are: {{rows}}, {{r0.money_in}}, {{r0.money_out}}.',
+    );
+    expect(narratorRetryMessage(['p'], ['d', 'v'], 500)).toContain('up to r49 for later rows');
   });
 
   it('a second failure stores a flagged block with [?] for unresolved tokens', async () => {
