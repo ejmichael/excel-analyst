@@ -83,4 +83,4 @@ Entry format:
 - Why: both are implemented and tested this way; the contract should say so, or the user may prefer 422 for (1).
 - Proposed shape: add to the `POST /me/logo` row: "a damaged image is 415 `file_unsupported`"; add to the `POST /reports` row: "a missing or malformed `workspace_id` is 422 before the 404 and 402 checks".
 - Affects: `POST /me/logo`, `POST /reports`.
-- Status: PROPOSED
+- Status: APPLIED (approved by the user 2026-11-13; added to API_CONTRACT.md by the server chat)
