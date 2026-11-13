@@ -27,8 +27,10 @@ function validationFailed(error: z.ZodError): Result {
   return invalid(error.issues.map((i) => field(i.path.join('.'), i.message)));
 }
 
-export const WORKSPACE_RULE_MESSAGE = 'This answer comes from a file in another workspace. A report can only hold answers from its own workspace.';
-export const DELETED_FILE_MESSAGE = "This answer's file was deleted, so it can't be checked against this workspace.";
+export const WORKSPACE_RULE_MESSAGE =
+  'Some of these answers come from a file in another workspace. A report can only hold answers from files in its own workspace.';
+export const DELETED_FILE_MESSAGE =
+  'Some of these answers come from a file that has been deleted, so we cannot check which workspace they belong to. Remove them from the report.';
 
 const title = z.string().trim().min(1).max(120);
 const subtitle = z.string().trim().max(200).nullable().optional();
@@ -106,10 +108,10 @@ function detail(user: MockUser, r: MockReport): ReportDetail {
 function checkBlocks(user: MockUser, workspaceId: string, ids: string[], path: (i: number) => string, existing: Set<string> | null): Result | null {
   if (new Set(ids).size !== ids.length) {
     const dupe = ids.findIndex((id, i) => ids.indexOf(id) !== i);
-    return invalid([field(path(dupe), 'This answer is in the list twice.')]);
+    return invalid([field(path(dupe), 'Each answer can appear only once in a report.')]);
   }
   const entries = ids.map((id) => (user.blocks ?? []).find((b) => b.block.id === id));
-  if (entries.some((e) => !e)) return fail(404, 'not_found', 'Not found.');
+  if (entries.some((e) => !e)) return fail(404, 'not_found', 'Answer not found.');
   const problems = [];
   for (const [i, entry] of entries.entries()) {
     const datasetId = entry!.block.dataset_id;
@@ -120,7 +122,9 @@ function checkBlocks(user: MockUser, workspaceId: string, ids: string[], path: (
     const dataset = (user.datasets ?? []).find((d) => d.detail.id === datasetId);
     if (dataset && dataset.detail.workspace_id !== workspaceId) problems.push(field(path(i), WORKSPACE_RULE_MESSAGE));
   }
-  return problems.length > 0 ? invalid(problems, problems[0]!.message) : null;
+  // Like the server: the top-level message is the other-workspace one when any answer is from another workspace.
+  const top = problems.some((p) => p.message === WORKSPACE_RULE_MESSAGE) ? WORKSPACE_RULE_MESSAGE : DELETED_FILE_MESSAGE;
+  return problems.length > 0 ? invalid(problems, top) : null;
 }
 
 export function routeReports(method: string, url: URL, user: MockUser, body: unknown): Result | null {
@@ -208,7 +212,7 @@ export function routeReports(method: string, url: URL, user: MockUser, body: unk
     return ok(detail(user, report));
   }
 
-  return fail(404, 'not_found', 'Not found.');
+  return fail(404, 'not_found', 'Answer not found.');
 }
 
 // ----- logo -----

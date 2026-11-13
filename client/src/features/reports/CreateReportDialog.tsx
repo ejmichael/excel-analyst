@@ -209,10 +209,13 @@ export function CreateReportDialog({ open, workspaceId, items, onClose, onCreate
                           className="inline-flex min-h-11 items-center font-medium underline underline-offset-4"
                           onClick={() => {
                             onDrop([n.block_id]);
-                            setNamed((all) => all.filter((x) => x.block_id !== n.block_id));
+                            const rest = named.filter((x) => x.block_id !== n.block_id);
+                            setNamed(rest);
+                            // The top message explains the refused answers; once none is left it no longer applies.
+                            if (rest.length === 0) setMessage(null);
                           }}
                         >
-                          Remove it from the tray
+                          Remove it from the tray<span className="sr-only">: {titleOf(n.block_id)}</span>
                         </button>
                       </li>
                     ))}

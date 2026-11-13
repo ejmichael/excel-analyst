@@ -20,6 +20,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { env } from '@/env';
 import { formatNumber } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { AnswerCard } from '@/features/ask/AnswerCard';
 import type { DatasetState } from '@/features/ask/HowCalculated';
 import { AddAnswersDialog } from './AddAnswersDialog';
@@ -97,6 +98,8 @@ function ReportView({ report }: { report: ReportDetail }) {
   const [errors, setErrors] = useState<DraftErrors>({});
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [removing, setRemoving] = useState<ID | null>(null);
+  /** Answers the server refused on save (the workspace rule), with its message for each: highlighted in the list. */
+  const [refused, setRefused] = useState<Record<ID, string>>({});
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [logoAttempts, setLogoAttempts] = useState(0);
@@ -122,6 +125,7 @@ function ReportView({ report }: { report: ReportDetail }) {
     setDraft(draftFrom(report));
     setErrors({});
     setSaveMessage(null);
+    setRefused({});
     setEditing(true);
   };
 
@@ -134,7 +138,10 @@ function ReportView({ report }: { report: ReportDetail }) {
     const problems = draftErrors(draft);
     setErrors(problems);
     setSaveMessage(null);
+    setRefused({});
     if (Object.keys(problems).length > 0 || !patch) return;
+    // The server names refused answers by their position in the request (blocks.<i>.block_id).
+    const sentIds = patch.blocks?.map((b) => b.block_id) ?? draft.blocks.map((b) => b.block_id);
     update.mutate(patch, {
       onSuccess: (next) => {
         setDraft(draftFrom(next));
@@ -145,14 +152,20 @@ function ReportView({ report }: { report: ReportDetail }) {
         if (error.code === 'not_found') return setSaveMessage('This report, or one of the answers in it, no longer exists. Reload the page to see the report as it is now.');
         if (error.code === 'validation_failed') {
           const fields = error.fieldErrors;
-          const ids = draft.blocks.map((b) => b.block_id);
-          const named = Object.entries(fields).flatMap(([path, message]) => {
-            const m = /^blocks\.(\d+)\./.exec(path);
-            const blockId = m ? ids[Number(m[1])] : undefined;
-            return blockId ? [`“${titleOf(blockId)}”: ${message}`] : [];
-          });
+          const named: Record<ID, string> = {};
+          for (const [path, message] of Object.entries(fields)) {
+            const m = /^blocks\.(\d+)(?:\.block_id)?$/.exec(path);
+            const blockId = m ? sentIds[Number(m[1])] : undefined;
+            if (blockId) named[blockId] = message;
+          }
           setErrors({ title: fields.title, subtitle: fields.subtitle, period_label: fields.period_label, notes: fields.notes });
-          setSaveMessage(named.length > 0 ? named.join(' ') : (error.serverMessage ?? error.message));
+          setRefused(named);
+          const titles = Object.keys(named).map((blockId) => `“${titleOf(blockId)}”`);
+          setSaveMessage(
+            titles.length > 0
+              ? `${error.serverMessage ?? error.message} Highlighted above: ${titles.join(', ')}.`
+              : (error.serverMessage ?? error.message),
+          );
           return;
         }
         setSaveMessage(errorMessage(error));
@@ -242,7 +255,16 @@ function ReportView({ report }: { report: ReportDetail }) {
           return (
             <li key={item.block_id} className="space-y-3">
               {editing && (
-                <div className="space-y-3 rounded-xl border border-dashed bg-card p-3">
+                <div
+                  className={cn(
+                    'space-y-3 rounded-xl border bg-card p-3',
+                    refused[item.block_id] ? 'border-2 border-destructive bg-destructive/5' : 'border-dashed',
+                  )}
+                  data-refused={refused[item.block_id] ? 'true' : undefined}
+                >
+                  {refused[item.block_id] && (
+                    <FieldError message={`This answer cannot stay in the report. ${refused[item.block_id]}`} />
+                  )}
                   <TextField
                     label={`Heading for answer ${formatNumber(i + 1, 0)}`}
                     value={item.heading}
@@ -320,6 +342,10 @@ function ReportView({ report }: { report: ReportDetail }) {
               variant="destructive"
               onClick={() => {
                 setDraft((d) => ({ ...d, blocks: d.blocks.filter((b) => b.block_id !== removing) }));
+                const rest = Object.fromEntries(Object.entries(refused).filter(([blockId]) => blockId !== removing));
+                setRefused(rest);
+                // The save message was about the refused answers; once none is left it no longer applies.
+                if (Object.keys(refused).length > 0 && Object.keys(rest).length === 0) setSaveMessage(null);
                 setRemoving(null);
               }}
             >

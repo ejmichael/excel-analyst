@@ -41,6 +41,23 @@ const MAX_LABELLED_VALUES = 12;
 
 const AXIS_TICK = { fontSize: 12, fill: 'var(--muted-foreground)' };
 
+/** Roughly the width of one 12px character, used to fit a category label under its bar. */
+const TICK_CHAR_PX = 7.5;
+
+/** Bar charts with at most this many bars label every bar; denser axes let Recharts skip labels that would overlap. */
+export const LABEL_EVERY_BAR_UP_TO = 8;
+
+/** Which category labels the x axis shows: every bar on a short bar chart, otherwise the ones that fit. */
+export function categoryInterval(type: string, count: number): 0 | 'preserveStartEnd' {
+  return type === 'bar' && count <= LABEL_EVERY_BAR_UP_TO ? 0 : 'preserveStartEnd';
+}
+
+/** How many characters of a category label fit under its bar (4 to 14), from the axis width and the tick count. */
+export function categoryLabelMax(width?: number, ticks?: number): number {
+  if (!width || !ticks) return 14;
+  return Math.max(4, Math.min(14, width / ticks / TICK_CHAR_PX));
+}
+
 /** A category tick that is cut short but keeps the full text as a hover/focus title. */
 function CategoryTick(props: {
   x?: number;
@@ -48,8 +65,12 @@ function CategoryTick(props: {
   payload?: { value: string };
   textAnchor?: 'start' | 'middle' | 'end';
   horizontal?: boolean;
+  /** Passed by Recharts: the axis width and the number of ticks shown, so a label can fit its slot. */
+  width?: number;
+  visibleTicksCount?: number;
 }) {
   const full = String(props.payload?.value ?? '');
+  const max = props.horizontal ? 16 : categoryLabelMax(props.width, props.visibleTicksCount);
   return (
     <text
       x={props.x}
@@ -60,7 +81,7 @@ function CategoryTick(props: {
       fill="var(--muted-foreground)"
     >
       <title>{full}</title>
-      {shortLabel(full, props.horizontal ? 16 : 14)}
+      {shortLabel(full, max)}
     </text>
   );
 }
@@ -193,7 +214,12 @@ function CartesianView({ model, ariaLabel }: { model: Extract<ChartModel, { kind
   const xAxis = horizontal ? (
     <XAxis type="number" tickFormatter={valueTick} tick={AXIS_TICK} />
   ) : (
-    <XAxis dataKey="xLabel" tick={<CategoryTick />} interval="preserveStartEnd" height={40} />
+    <XAxis
+      dataKey="xLabel"
+      tick={<CategoryTick />}
+      interval={categoryInterval(model.type, data.length)}
+      height={40}
+    />
   );
   const yAxis = horizontal ? (
     <YAxis type="category" dataKey="xLabel" width={112} tick={<CategoryTick horizontal />} interval={0} />

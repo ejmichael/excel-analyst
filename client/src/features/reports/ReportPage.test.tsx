@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { configureApiClient, type Transport } from '@/api/client';
 import { BLOCK_TEMPLATES, blockFrom } from '@/api/mocks/blockFixtures';
+import { DELETED_FILE_MESSAGE, WORKSPACE_RULE_MESSAGE } from '@/api/mocks/reports';
 import type { Block, Brand, ReportDetail } from '@/api/types';
 import { ReportPage } from './ReportPage';
 
@@ -207,21 +208,43 @@ describe('ReportPage: editing', () => {
     expect(calls.some((c) => c.method === 'DELETE' && c.path === '/reports/r1')).toBe(true);
   });
 
-  it('a 422 on save names the answer', async () => {
+  it('a 422 for the workspace rule highlights each refused answer by its position in the request', async () => {
+    // The real server's shape: one entry per refused answer, blocks.<i>.block_id, i = position in the PATCH body.
     setup(makeReport(), (_url, init) =>
       init.method === 'PATCH'
         ? json(422, {
             error: {
               code: 'validation_failed',
-              message: 'x',
-              details: { fields: [{ location: 'body', path: 'blocks.1.block_id', message: 'This answer comes from another workspace.' }] },
+              message: WORKSPACE_RULE_MESSAGE,
+              details: {
+                fields: [
+                  { location: 'body', path: 'blocks.1.block_id', message: WORKSPACE_RULE_MESSAGE },
+                  { location: 'body', path: 'blocks.2.block_id', message: DELETED_FILE_MESSAGE },
+                ],
+              },
             },
           })
         : null,
     );
     await userEvent.click(await screen.findByRole('button', { name: 'Edit report' }));
+    // After the move the request order is: Card fees, Net sales by store, Average sale per store.
     await userEvent.click(screen.getByRole('button', { name: 'Move down: Net sales by store' }));
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    expect(await screen.findByText('“Net sales by store”: This answer comes from another workspace.')).toBeInTheDocument();
+
+    await waitFor(() => expect(document.querySelectorAll('[data-refused="true"]')).toHaveLength(2));
+    const refused = [...document.querySelectorAll<HTMLElement>('[data-refused="true"]')];
+    expect(within(refused[0]!).getByRole('textbox', { name: 'Heading for answer 2' })).toHaveAttribute('placeholder', 'Net sales by store');
+    expect(refused[0]).toHaveTextContent(`This answer cannot stay in the report. ${WORKSPACE_RULE_MESSAGE}`);
+    expect(within(refused[1]!).getByRole('textbox', { name: 'Heading for answer 3' })).toHaveAttribute('placeholder', 'Average sale per store');
+    expect(refused[1]).toHaveTextContent(DELETED_FILE_MESSAGE);
+    expect(screen.getByText(`${WORKSPACE_RULE_MESSAGE} Highlighted above: “Net sales by store”, “Average sale per store”.`)).toBeInTheDocument();
+
+    // Removing one keeps the other highlighted; removing both clears the message.
+    for (const [title, left] of [['Net sales by store', 1], ['Average sale per store', 0]] as const) {
+      await userEvent.click(screen.getByRole('button', { name: `Remove from report: ${title}` }));
+      await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+      expect(document.querySelectorAll('[data-refused="true"]')).toHaveLength(left);
+    }
+    expect(screen.queryByText(/Highlighted above/)).not.toBeInTheDocument();
   });
 });

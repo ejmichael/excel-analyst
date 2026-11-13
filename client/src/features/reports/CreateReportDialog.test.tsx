@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { configureApiClient, type Transport } from '@/api/client';
 import { buildMe, newMockUser } from '@/api/mocks/data';
+import { DELETED_FILE_MESSAGE, WORKSPACE_RULE_MESSAGE } from '@/api/mocks/reports';
 import { SessionProvider } from '@/auth/SessionProvider';
 import { signedIn } from '@/test/session';
 import { CreateReportDialog, answersNamedIn, reportFieldErrors } from './CreateReportDialog';
@@ -14,6 +15,7 @@ const json = (status: number, body: unknown) => new Response(JSON.stringify(body
 const items: TrayItem[] = [
   { block_id: 'b1', title: 'Net sales by store', dataset_id: 'd1', dataset_name: 'Card sales October' },
   { block_id: 'b2', title: 'Card fees', dataset_id: 'd1', dataset_name: 'Card sales October' },
+  { block_id: 'b3', title: 'Stock count', dataset_id: 'd2', dataset_name: 'Stock' },
 ];
 
 function setup(answer: (url: string, init: RequestInit) => Response | null) {
@@ -68,7 +70,7 @@ describe('CreateReportDialog', () => {
     );
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('textbox', { name: 'Title' })).toHaveValue('Card sales October report');
-    expect(dialog).toHaveTextContent('2 answers');
+    expect(dialog).toHaveTextContent('3 answers');
     expect(await within(dialog).findByText('0 of 1 reports used this month')).toBeInTheDocument();
 
     await userEvent.type(within(dialog).getByRole('textbox', { name: 'Period (optional)' }), 'October 2026');
@@ -80,7 +82,7 @@ describe('CreateReportDialog', () => {
       title: 'Card sales October report',
       subtitle: null,
       period_label: 'October 2026',
-      block_ids: ['b1', 'b2'],
+      block_ids: ['b1', 'b2', 'b3'],
     });
   });
 
@@ -99,22 +101,35 @@ describe('CreateReportDialog', () => {
     expect(await screen.findByText('Your Free plan includes 1 report a month. You have used 1 this month.')).toBeInTheDocument();
   });
 
-  it('422 for the workspace rule shows the message and names the answer to remove', async () => {
+  it('422 for the workspace rule names each refused answer by its position, each with a way to remove it', async () => {
+    // The real server's shape: one entry per refused answer, block_ids.<i>, i = position in the request.
     const { onDrop } = setup(() =>
       json(422, {
         error: {
           code: 'validation_failed',
-          message: 'An answer belongs to another workspace.',
-          details: { fields: [{ location: 'body', path: 'block_ids.1', message: 'This answer comes from another workspace.' }] },
+          message: WORKSPACE_RULE_MESSAGE,
+          details: {
+            fields: [
+              { location: 'body', path: 'block_ids.1', message: WORKSPACE_RULE_MESSAGE },
+              { location: 'body', path: 'block_ids.2', message: DELETED_FILE_MESSAGE },
+            ],
+          },
         },
       }),
     );
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Create report' }));
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('An answer belongs to another workspace.');
-    expect(alert).toHaveTextContent('“Card fees”: This answer comes from another workspace.');
-    await userEvent.click(within(alert).getByRole('button', { name: 'Remove it from the tray' }));
-    expect(onDrop).toHaveBeenCalledWith(['b2']);
+    expect(alert).toHaveTextContent(`“Card fees”: ${WORKSPACE_RULE_MESSAGE}`);
+    expect(alert).toHaveTextContent(`“Stock count”: ${DELETED_FILE_MESSAGE}`);
+    expect(within(alert).queryByText(/Net sales by store/)).not.toBeInTheDocument();
+
+    await userEvent.click(within(alert).getByRole('button', { name: 'Remove it from the tray: Card fees' }));
+    expect(onDrop).toHaveBeenLastCalledWith(['b2']);
+    expect(screen.getByRole('alert')).toHaveTextContent(WORKSPACE_RULE_MESSAGE);
+    await userEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Remove it from the tray: Stock count' }));
+    expect(onDrop).toHaveBeenLastCalledWith(['b3']);
+    // Nothing refused is left, so the message goes too.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('404 re-checks each answer and drops the one that no longer exists', async () => {
