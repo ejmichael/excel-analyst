@@ -10,6 +10,8 @@ import { requireUuidParam, validate, validQuery } from '../middleware/validate.j
 import { ask, AskLlmFailure } from '../services/analysis/ask.js';
 import { BLOCK_COLUMNS, type BlockRow, getOwnBlock, saveAnsweredBlock, toBlock } from '../services/blocks.js';
 import { type ColumnRow, type DatasetRow, getColumns, getOwnDataset } from '../services/datasets.js';
+import { todaySast } from '../services/dates.js';
+import { slugify } from '../services/downloadNames.js';
 import { assertWithinLimit } from '../services/limits.js';
 import { SandboxError, withSandbox } from '../services/sandbox/sandbox.js';
 import { recordLlmUsage, recordUsage } from '../services/usageEvents.js';
@@ -198,15 +200,6 @@ export function buildCsv(names: string[], rows: Array<Record<string, CellValue>>
   return `${lines.join('\r\n')}\r\n`;
 }
 
-const slug = (s: string) =>
-  s
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60) || 'answer';
-
 function sendCsv(res: Response, filename: string, body: string): void {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -216,13 +209,12 @@ function sendCsv(res: Response, filename: string, body: string): void {
 blocksRouter.get('/blocks/:id/export.csv', requireUuidParam(), async (req, res) => {
   const { userId, token } = authOf(req);
   const block = await getOwnBlock(supabaseForUser(token), userId, req.params.id as string);
-  // Date in SAST, like every other date in the app.
-  const today = new Date(Date.now() + 2 * 3_600_000).toISOString().slice(0, 10);
   const body = buildCsv(block.columns.map((c) => c.name), block.rows);
   // Counted once the file is built (before sending, so the count is in place when the download arrives);
   // a failure to count does not fail the download.
   await recordUsage(userId, 'export', { block_id: block.id, format: 'csv' }).catch(() => undefined);
-  sendCsv(res, `${slug(block.title)}-${today}.csv`, body);
+  // Date in SAST, like every other date in the app.
+  sendCsv(res, `${slugify(block.title, 'answer')}-${todaySast()}.csv`, body);
 });
 
 // ---------- POST /blocks/:id/feedback ----------

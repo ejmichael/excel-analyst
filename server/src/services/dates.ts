@@ -15,3 +15,13 @@ export function monthStartSast(now: Date = new Date()): ISODate {
 export function monthStartSastInstant(now: Date = new Date()): ISODateTime {
   return `${monthStartSast(now)}T00:00:00+02:00`;
 }
+
+/** Today's date in SAST as 'YYYY-MM-DD' (file names of downloads). */
+export function todaySast(now: Date = new Date()): ISODate {
+  return new Date(now.getTime() + SAST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** 'YYYY-MM-DD HH:MM' in SAST, for "generated on" lines. */
+export function sastDateTime(now: Date = new Date()): string {
+  return new Date(now.getTime() + SAST_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ');
+}

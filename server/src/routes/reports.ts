@@ -1,11 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { notFound, throwIfDbError } from '../lib/errors.js';
+import { AppError, notFound, throwIfDbError } from '../lib/errors.js';
 import { authOf, ok } from '../lib/http.js';
 import { logger } from '../lib/logger.js';
 import { supabaseAdmin, supabaseForUser } from '../lib/supabase.js';
 import { parseOrThrow, requireUuidParam, validate, validQuery } from '../middleware/validate.js';
-import { assertWithinLimit } from '../services/limits.js';
+import { env } from '../config/env.js';
+import { todaySast } from '../services/dates.js';
+import { slugify } from '../services/downloadNames.js';
+import { assertWithinLimit, supabaseLimitsDataSource } from '../services/limits.js';
+import { buildReportXlsx, ExportTooLarge, MAX_CONCURRENT_EXPORTS } from '../services/reportXlsx.js';
+import { Semaphore } from '../services/sandbox/semaphore.js';
 import {
   assertBlocksAllowed,
   buildReportDetail,
@@ -126,3 +131,39 @@ reportsRouter.delete('/reports/:id', requireUuidParam(), async (req, res) => {
   ok(res, deleted);
 });
 
+
+// ---------- GET /reports/:id/export.xlsx ----------
+
+// Workbooks are built in memory: at most MAX_CONCURRENT_EXPORTS at a time, waiting up to 20 s for a slot.
+const exportSlots = new Semaphore(MAX_CONCURRENT_EXPORTS);
+
+reportsRouter.get('/reports/:id/export.xlsx', requireUuidParam(), async (req, res) => {
+  const { userId, token } = authOf(req);
+  const db = supabaseForUser(token);
+  const detail = await buildReportDetail(db, userId, await getOwnReport(db, userId, req.params.id as string));
+  const [plan, allLimits] = await Promise.all([supabaseLimitsDataSource.getPlan(userId), supabaseLimitsDataSource.getAllPlanLimits()]);
+  const branding = allLimits.find((l) => l.plan === plan)?.branding ?? false;
+
+  const release = await exportSlots.acquire(20_000);
+  if (!release) throw new AppError('rate_limited', 'The server is busy building other exports. Please try again in a moment.');
+  const started = Date.now();
+  let file: Buffer;
+  try {
+    file = await buildReportXlsx(detail, { appName: env().APP_NAME, branding, generatedAt: new Date() });
+  } catch (err) {
+    if (err instanceof ExportTooLarge) {
+      logger.warn({ report_id: detail.id, cells: err.cells }, 'export too large');
+      throw new AppError('internal', 'This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again.');
+    }
+    throw err;
+  } finally {
+    release();
+  }
+  // Counted only once the file was built.
+  await recordUsage(userId, 'export', { report_id: detail.id, format: 'xlsx', bytes: file.length, blocks: detail.blocks.length });
+  logger.info({ report_id: detail.id, bytes: file.length, blocks: detail.blocks.length, ms: Date.now() - started }, 'report exported');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${slugify(detail.title, 'report')}-${todaySast()}.xlsx"`);
+  res.setHeader('Content-Length', String(file.length));
+  res.end(file);
+});
