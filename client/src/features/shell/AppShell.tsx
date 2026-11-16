@@ -36,7 +36,7 @@ function ShellLayout() {
   const trayOpen = useReportTray(active?.id).items.length > 0;
   return (
     <>
-      <div className="min-h-dvh bg-background md:grid md:grid-cols-[15rem_1fr]">
+      <div data-print-shell className="min-h-dvh bg-background md:grid md:grid-cols-[15rem_1fr]">
         <aside className="hidden border-r bg-card md:flex md:min-h-dvh md:flex-col">
           <div className="px-5 py-5">
             <Wordmark />
@@ -123,7 +123,7 @@ function MobileNav() {
 function TopBar() {
   const me = useMe();
   return (
-    <header className="sticky top-0 z-30 flex min-h-16 items-center gap-2 border-b bg-background/95 px-2 sm:px-6">
+    <header data-print="hide" className="sticky top-0 z-30 flex min-h-16 items-center gap-2 border-b bg-background/95 px-2 sm:px-6">
       <MobileNav />
       <WorkspaceSwitcher />
       <div className="ml-auto flex items-center gap-1 sm:gap-3">

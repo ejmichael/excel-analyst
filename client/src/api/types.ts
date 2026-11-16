@@ -436,6 +436,7 @@ export interface ShareLink {
   expires_at: ISODateTime | null;
   revoked_at: ISODateTime | null;
   view_count: number;
+  contains_personal_data: boolean; // best-effort warning, never a guarantee: the report's tables appear to contain personal details
   created_at: ISODateTime;
 }
 
@@ -444,8 +445,18 @@ export interface CreateShareLinkRequest {
   show_working?: boolean; // default false: hides SQL and checks on the public page
 }
 
-/** Public report: same as ReportDetail, but blocks' `sql` is '' and `checks` is [] unless show_working is true. */
-export type PublicReport = ReportDetail;
+/** Public report: same as ReportDetail, but blocks' `sql` is '' and `checks` is [] unless show_working is true, and `has_source_rows` is always false. */
+/** A block on a public report: no dataset id. */
+export type PublicBlock = Omit<Block, 'dataset_id'>;
+
+export interface PublicReportBlock {
+  position: number;
+  heading_override: string | null;
+  block: PublicBlock;
+}
+
+/** No workspace or template id; blocks carry PublicBlock. */
+export type PublicReport = Omit<ReportDetail, 'workspace_id' | 'template_id' | 'blocks'> & { blocks: PublicReportBlock[] };
 
 // ---------- templates and runs ----------
 export interface TemplateColumn {

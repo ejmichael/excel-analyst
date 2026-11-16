@@ -18,7 +18,7 @@ export function ResultTable({ columns, rows, label, caption }: ResultTableProps)
   return (
     <div className="space-y-2">
       {caption && <p className="text-sm text-muted-foreground tabular">{caption}</p>}
-      <div className="max-h-[26rem] overflow-auto rounded-lg border bg-card" tabIndex={0} role="region" aria-label={label}>
+      <div data-print-table className="max-h-[26rem] overflow-auto rounded-lg border bg-card" tabIndex={0} role="region" aria-label={label}>
         <table className="w-full border-collapse text-sm tabular">
           <thead>
             <tr>

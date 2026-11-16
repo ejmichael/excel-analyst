@@ -52,6 +52,7 @@ export function ReportTray({ workspaceId }: { workspaceId: ID | undefined }) {
 
   return (
     <aside
+      data-print="hide"
       aria-label="Report tray"
       className={cn(
         'fixed inset-x-0 bottom-0 z-30 border-t bg-card shadow-[0_-4px_16px_rgba(22,35,31,0.08)]',

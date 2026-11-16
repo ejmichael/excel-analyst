@@ -199,6 +199,8 @@ export function HowCalculated({ block, dataset, defaultOpen }: { block: Block; d
       <h3 className="font-sans text-base">
         <button
           type="button"
+          // Printed as a closed heading; its content is not printed.
+          data-print="keep"
           aria-expanded={open}
           aria-controls={id}
           onClick={() => setOpen((o) => !o)}
@@ -209,7 +211,7 @@ export function HowCalculated({ block, dataset, defaultOpen }: { block: Block; d
         </button>
       </h3>
       {open && (
-        <div id={id} className="space-y-5 border-t px-4 py-4">
+        <div id={id} data-print-disclosure className="space-y-5 border-t px-4 py-4">
           <p className="text-sm">
             Analyst wrote a query, ran it on your file, and the numbers below come from that result. The AI did not calculate
             them.

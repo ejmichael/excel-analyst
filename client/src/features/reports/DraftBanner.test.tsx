@@ -120,7 +120,7 @@ describe('draft report banner', () => {
     expect(within(region).getByRole('link', { name: 'Add your own question' })).toHaveAttribute('href', '/datasets/d1/ask');
     await userEvent.click(within(region).getByRole('button', { name: 'Edit report' }));
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Download (Coming soon)' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save as template (Coming soon)' })).toBeDisabled();
   });
 
   it('renders API text as text', async () => {

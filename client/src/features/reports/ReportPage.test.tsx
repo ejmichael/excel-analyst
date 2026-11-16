@@ -97,7 +97,8 @@ describe('ReportPage: reading', () => {
     expect(screen.queryByRole('button', { name: 'This looks wrong' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Add to report/ })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'How this was calculated' })[0]).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByRole('button', { name: 'Download (Coming soon)' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Download PDF' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Save as template (Coming soon)' })).toBeDisabled();
   });
 
   it('keeps a flagged answer\'s warning', async () => {

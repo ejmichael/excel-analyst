@@ -51,7 +51,7 @@ export function DraftBanner({ report, onEdit, onDismiss }: DraftBannerProps) {
   // Asking a new question happens on the file's Ask page; the answer can then be added with Edit report.
   const datasetId = report.blocks.find((b) => b.block.dataset_id !== null)?.block.dataset_id ?? null;
   return (
-    <section aria-labelledby="draft-banner-heading" className="rounded-xl border border-primary/40 bg-accent p-4 sm:p-5">
+    <section aria-labelledby="draft-banner-heading" data-print="hide" className="rounded-xl border border-primary/40 bg-accent p-4 sm:p-5">
       <div className="flex items-start gap-3">
         <Info className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
         <div className="min-w-0 flex-1 space-y-2">

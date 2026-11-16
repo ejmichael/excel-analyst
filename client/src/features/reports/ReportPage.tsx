@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowLeft, ArrowUp, Download, LayoutTemplate, Pencil, Plus, Share2, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, LayoutTemplate, Pencil, Plus, Share2, Trash2, X } from 'lucide-react';
 import { errorMessage, isApiError } from '@/api/client';
 import { getDataset } from '@/api/datasets';
 import type { ID, ReportDetail } from '@/api/types';
@@ -25,6 +25,7 @@ import { AnswerCard } from '@/features/ask/AnswerCard';
 import type { DatasetState } from '@/features/ask/HowCalculated';
 import { AddAnswersDialog } from './AddAnswersDialog';
 import { DraftBanner, draftDismissals } from './DraftBanner';
+import { DownloadPdfButton, PrintFooter } from './print';
 import { PERIOD_MAX, SUBTITLE_MAX, TITLE_MAX } from './CreateReportDialog';
 import { useDeleteReport, useReport, useUpdateReport, reportKeys } from './queries';
 import { ReportHeader } from './ReportHeader';
@@ -33,7 +34,7 @@ import { MAX_REPORT_BLOCKS } from './tray';
 
 function BackLink() {
   return (
-    <Link to="/reports" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline">
+    <Link to="/reports" data-print="hide" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline">
       <ArrowLeft className="size-4" aria-hidden />
       All reports
     </Link>
@@ -201,8 +202,8 @@ function ReportView({ report }: { report: ReportDetail }) {
           }}
         />
       )}
-      {/* Actions. Download, Share and Save as template come in later parts. */}
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Report actions">
+      {/* Actions. Save as template comes in a later part. */}
+      <div className="flex flex-wrap items-start gap-2" role="group" aria-label="Report actions" data-print="hide">
         {!editing && (
           <>
             <Button variant="outline" onClick={startEditing}>
@@ -215,10 +216,7 @@ function ReportView({ report }: { report: ReportDetail }) {
             </Button>
           </>
         )}
-        <Button variant="outline" disabled>
-          <Download aria-hidden />
-          Download (Coming soon)
-        </Button>
+        {!editing && <DownloadPdfButton />}
         <Button variant="outline" disabled>
           <Share2 aria-hidden />
           Share (Coming soon)
@@ -230,7 +228,7 @@ function ReportView({ report }: { report: ReportDetail }) {
       </div>
 
       {editing ? (
-        <section aria-label="Edit the report details" className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
+        <section aria-label="Edit the report details" data-print="hide" className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
           <h2 className="text-lg font-semibold">Editing the report</h2>
           <TextField label="Title" value={draft.title} maxLength={TITLE_MAX} error={errors.title} onChange={set('title')} />
           <TextField label="Subtitle (optional)" value={draft.subtitle} maxLength={SUBTITLE_MAX} error={errors.subtitle} onChange={set('subtitle')} />
@@ -284,6 +282,7 @@ function ReportView({ report }: { report: ReportDetail }) {
                     refused[item.block_id] ? 'border-2 border-destructive bg-destructive/5' : 'border-dashed',
                   )}
                   data-refused={refused[item.block_id] ? 'true' : undefined}
+                  data-print="hide"
                 >
                   {refused[item.block_id] && (
                     <FieldError message={`This answer cannot stay in the report. ${refused[item.block_id]}`} />
@@ -322,7 +321,7 @@ function ReportView({ report }: { report: ReportDetail }) {
       </ol>
 
       {editing && (
-        <div className="sticky bottom-2 z-10 space-y-3 rounded-xl border border-primary/40 bg-card p-4 shadow-md">
+        <div data-print="hide" className="sticky bottom-2 z-10 space-y-3 rounded-xl border border-primary/40 bg-card p-4 shadow-md">
           {errors.blocks && <FormMessage>{errors.blocks}</FormMessage>}
           {saveMessage && <FormMessage>{saveMessage}</FormMessage>}
           <div className="flex flex-wrap items-center gap-2">
@@ -348,6 +347,7 @@ function ReportView({ report }: { report: ReportDetail }) {
       )}
 
       {report.watermark && <p className="pt-4 text-center text-sm text-muted-foreground">Made with {env.appName}</p>}
+      <PrintFooter title={report.title} />
 
       <Dialog open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)}>
         <DialogContent>

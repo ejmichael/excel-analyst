@@ -69,7 +69,7 @@ export function AnswerCard({
   const failed = block.checks.filter((c) => !c.ok);
 
   return (
-    <article aria-labelledby={headingId} className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
+    <article aria-labelledby={headingId} data-print-answer className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
       <header className="space-y-1">
         <Heading id={headingId} ref={headingRef} tabIndex={-1} className="text-xl font-semibold break-words outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {heading || block.title}

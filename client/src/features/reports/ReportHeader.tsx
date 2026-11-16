@@ -47,6 +47,7 @@ export function ReportHeader({
         className="flex min-h-16 items-center gap-3 px-5 py-3"
         style={{ backgroundColor: brand.color, color: text }}
         data-testid="report-brand-band"
+        data-brand-band
       >
         {showLogo && (
           <img
