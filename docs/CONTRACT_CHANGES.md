@@ -95,3 +95,14 @@ Entry format:
 - Proposed shape: on that 409 only, `details: { run: AutoReportRun }` (or the smaller `{ run_id: ID }`), so the client can poll `GET /auto-reports/:id` as usual. No new endpoint; other 409 `conflict` responses are unchanged.
 - Affects: `POST /datasets/:id/auto-report` (API_CONTRACT Flow B2 and the endpoint row), `api-types.ts` (a small `AutoReportConflictDetails` type), client Part 4b. Until then the client shows: "Analyst is already building a report from this file. It will appear in your reports when it is done."
 - Status: APPLIED (approved by the user 2026-11-16 as `details: { auto_report_id: ID }`, type `AutoReportConflictDetails`; applied by the server chat)
+
+## 2026-11-16: Public report identifiers, and the token in the DELETE response (from: server)
+- What:
+  1. **Ids in the public report.** `PublicReport = ReportDetail`, so the public JSON must carry `workspace_id` (a required `ID`) and, in every block, `dataset_id` (`ID | null`). The Part 5 brief says public JSON must not contain workspace or dataset ids, and asks for a test that fails if any appears. The type and the brief cannot both hold.
+  2. **The token in `DELETE /share-links/:id`.** The contract says DELETE "returns the updated link", and `ShareLink` includes `token` and `url`. The brief says a token may be returned only "in the one creation response and the owner's list".
+- Why: (1) a workspace id groups one bookkeeper's clients, and a dataset id points at a file; neither is needed on the public page. (2) The DELETE caller is the signed-in owner, the same person who sees the token in the list, and the link is revoked by then; but the brief's wording excludes it.
+- Proposed shape:
+  1. In `api-types.ts`: `export type PublicReport = Omit<ReportDetail, 'workspace_id' | 'template_id' | 'blocks'> & { blocks: Array<Omit<ReportBlock, 'block'> & { block: Omit<Block, 'dataset_id'> }> }`, and the public endpoint leaves those fields out. (Alternative that keeps the type: send `dataset_id: null` and `workspace_id: ''`, which is a placeholder rather than a real value.) Recommended: the `Omit` type.
+  2. Treat the owner's DELETE response like the owner's list: it returns the full `ShareLink`, token included. (Alternative: DELETE returns the link with `token: ''` and `url: ''`.) Recommended: the full link, since it never leaves the owner's session.
+- Affects: `api-types.ts` (`PublicReport`), `GET /public/reports/:token`, `DELETE /share-links/:id`, the client's public page and share dialog.
+- Status: PROPOSED
