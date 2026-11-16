@@ -5,6 +5,7 @@ import { buildMe, cheapestPlanAllowing, sastTimestamp, type MockUser } from './d
 import { routeAutoReports } from './autoReports';
 import { routeBlocks } from './blocks';
 import { handleLogoUpload, routeLogoDelete, routeReports } from './reports';
+import { routeSharing } from './sharing';
 import { datasetSnapshot, handleUpload, routeDatasets } from './datasets';
 import { mockStore } from './store';
 
@@ -189,6 +190,15 @@ export const mockTransport: Transport = async (url, init) => {
     const result = routeLogoDelete(user);
     mockStore.save();
     return json(result.status, result.body);
+  }
+
+  if (/^\/(reports\/[^/]+\/(export\.xlsx|share-links)|share-links\/[^/]+)$/.test(path)) {
+    if (!user.popia_consent_at) return fail(403, 'consent_required', 'Accept the terms and privacy notice first.');
+    // The link's url points at this app (CLIENT_URL on the server).
+    const result = routeSharing(method, path, user, body, window.location.origin);
+    mockStore.save();
+    if (result?.raw) return result.raw;
+    if (result) return json(result.status, result.body);
   }
 
   if (path === '/reports' || path.startsWith('/reports/')) {

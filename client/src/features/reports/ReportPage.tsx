@@ -26,6 +26,8 @@ import type { DatasetState } from '@/features/ask/HowCalculated';
 import { AddAnswersDialog } from './AddAnswersDialog';
 import { DraftBanner, draftDismissals } from './DraftBanner';
 import { DownloadPdfButton, PrintFooter } from './print';
+import { ExcelButton } from './ExcelButton';
+import { ShareDialog } from './ShareDialog';
 import { PERIOD_MAX, SUBTITLE_MAX, TITLE_MAX } from './CreateReportDialog';
 import { useDeleteReport, useReport, useUpdateReport, reportKeys } from './queries';
 import { ReportHeader } from './ReportHeader';
@@ -104,6 +106,7 @@ function ReportView({ report }: { report: ReportDetail }) {
   const [refused, setRefused] = useState<Record<ID, string>>({});
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [logoAttempts, setLogoAttempts] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const [draftDismissed, setDraftDismissed] = useState(() => draftDismissals.has(report.id));
@@ -216,11 +219,16 @@ function ReportView({ report }: { report: ReportDetail }) {
             </Button>
           </>
         )}
-        {!editing && <DownloadPdfButton />}
-        <Button variant="outline" disabled>
-          <Share2 aria-hidden />
-          Share (Coming soon)
-        </Button>
+        {!editing && (
+          <>
+            <DownloadPdfButton />
+            <ExcelButton report={report} />
+            <Button variant="outline" onClick={() => setSharing(true)}>
+              <Share2 aria-hidden />
+              Share
+            </Button>
+          </>
+        )}
         <Button variant="outline" disabled>
           <LayoutTemplate aria-hidden />
           Save as template (Coming soon)
@@ -348,6 +356,9 @@ function ReportView({ report }: { report: ReportDetail }) {
 
       {report.watermark && <p className="pt-4 text-center text-sm text-muted-foreground">Made with {env.appName}</p>}
       <PrintFooter title={report.title} />
+
+      {/* Mounted only while open: it loads the links and the plan when needed. */}
+      {sharing && <ShareDialog open report={report} onClose={() => setSharing(false)} />}
 
       <Dialog open={removing !== null} onOpenChange={(o) => !o && setRemoving(null)}>
         <DialogContent>

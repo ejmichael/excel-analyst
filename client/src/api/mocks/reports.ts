@@ -65,7 +65,7 @@ const pageQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
-function reportsOf(user: MockUser): MockReport[] {
+export function reportsOf(user: MockUser): MockReport[] {
   user.reports ??= [];
   return user.reports;
 }
@@ -112,7 +112,8 @@ function summary(r: MockReport): Report {
   return { ...r.report, block_count: r.blocks.length };
 }
 
-function detail(user: MockUser, r: MockReport): ReportDetail {
+/** The report as the owner sees it (also the base of the public report). */
+export function reportDetail(user: MockUser, r: MockReport): ReportDetail {
   return {
     ...summary(r),
     brand: brandOf(user),
@@ -193,7 +194,7 @@ export function routeReports(method: string, url: URL, user: MockUser, body: unk
       period_label: input.period_label || null,
       block_ids: input.block_ids,
     });
-    return ok(detail(user, report), 201);
+    return ok(reportDetail(user, report), 201);
   }
 
   const match = /^\/reports\/([^/]+)$/.exec(path);
@@ -201,10 +202,12 @@ export function routeReports(method: string, url: URL, user: MockUser, body: unk
   const report = reportsOf(user).find((r) => r.report.id === decodeURIComponent(match[1] ?? ''));
   if (!report) return fail(404, 'not_found', 'Report not found.');
 
-  if (method === 'GET') return ok(detail(user, report));
+  if (method === 'GET') return ok(reportDetail(user, report));
 
   if (method === 'DELETE') {
     user.reports = reportsOf(user).filter((r) => r !== report);
+    // Contract: deleting a report deletes (revokes) its share links.
+    user.share_links = (user.share_links ?? []).filter((l) => l.report_id !== report.report.id);
     return ok({ deleted: true });
   }
 
@@ -224,7 +227,7 @@ export function routeReports(method: string, url: URL, user: MockUser, body: unk
     if (input.notes !== undefined) report.report.notes = input.notes || null;
     if (input.blocks) report.blocks = input.blocks.map((b) => ({ block_id: b.block_id, heading_override: b.heading_override || null }));
     report.report.updated_at = sastTimestamp();
-    return ok(detail(user, report));
+    return ok(reportDetail(user, report));
   }
 
   return fail(404, 'not_found', 'Answer not found.');

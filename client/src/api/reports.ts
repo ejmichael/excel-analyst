@@ -1,12 +1,14 @@
-import { apiFetch, apiUpload } from './client';
+import { apiDownload, apiFetch, apiUpload, type Download } from './client';
 import type {
   Brand,
+  CreateShareLinkRequest,
   CreateReportRequest,
   Deleted,
   ID,
   Paged,
   Report,
   ReportDetail,
+  ShareLink,
   UpdateReportRequest,
 } from './types';
 
@@ -50,4 +52,24 @@ export function uploadLogo(file: File, options: { onProgress: (fraction: number)
 /** DELETE /me/logo */
 export function deleteLogo(): Promise<Brand> {
   return apiFetch<Brand>('/me/logo', { method: 'DELETE' });
+}
+
+/** GET /reports/:id/export.xlsx: the file itself (name from Content-Disposition). Counts as an export. */
+export function downloadReportXlsx(id: ID): Promise<Download> {
+  return apiDownload(`/reports/${encodeURIComponent(id)}/export.xlsx`);
+}
+
+/** GET /reports/:id/share-links (newest first; the owner sees each link's url) */
+export function listShareLinks(reportId: ID, signal?: AbortSignal): Promise<ShareLink[]> {
+  return apiFetch<ShareLink[]>(`/reports/${encodeURIComponent(reportId)}/share-links`, { signal });
+}
+
+/** POST /reports/:id/share-links (201; needs limits.share_links, else 402) */
+export function createShareLink(reportId: ID, body: CreateShareLinkRequest): Promise<ShareLink> {
+  return apiFetch<ShareLink>(`/reports/${encodeURIComponent(reportId)}/share-links`, { method: 'POST', body });
+}
+
+/** DELETE /share-links/:id: turns the link off (sets revoked_at) and returns it */
+export function revokeShareLink(id: ID): Promise<ShareLink> {
+  return apiFetch<ShareLink>(`/share-links/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }

@@ -22,5 +22,8 @@ npm run build
   file one answer is flagged. A title containing "fail" ends failed after two answers, "busy" is 409 naming a run started
   as if from another tab (the page then shows its progress),
   "limit" is 402 on the monthly questions, and "slow" takes 3 minutes.
+  Reports: "Download Excel" saves a small example workbook. A report titled with "busy" answers the export with 429;
+  links made on a report titled with "expired" have already expired; a report titled with "personal" (or with a column
+  such as email or phone) is flagged as containing personal details. Share links need Solo or above (`paid@…`).
 - `VITE_USE_MOCKS=false` uses Supabase Auth (publishable key in `VITE_SUPABASE_ANON_KEY`) and the API at `VITE_API_URL`.
   Supabase is used for auth only; all data goes through the API.

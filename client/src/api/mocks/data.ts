@@ -1,4 +1,4 @@
-import type { AutoReportRun, Me, Plan, PlanLimits, Usage, Workspace } from '../types';
+import type { AutoReportRun, Me, Plan, PlanLimits, ShareLink, Usage, Workspace } from '../types';
 import type { MockBlock } from './blocks';
 import type { MockReport } from './reports';
 import type { MockDataset } from './datasets';
@@ -97,6 +97,8 @@ export interface MockUser {
   logo_data_url?: string | null;
   /** "Build my report" runs (S3b). */
   auto_report_runs?: MockAutoReportRun[];
+  /** Share links (S4); contains_personal_data is worked out when they are listed or created. */
+  share_links?: Array<Omit<ShareLink, 'contains_personal_data'>>;
 }
 
 /** A scripted auto-report run: it moves on with time, like the server's background job. */
