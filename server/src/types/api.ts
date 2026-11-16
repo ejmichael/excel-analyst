@@ -404,6 +404,23 @@ export interface UpdateReportRequest {
   blocks?: Array<{ block_id: ID; heading_override?: string | null }>; // replaces the list and order
 }
 
+// ---------- auto-report ("Build my report", Flow B2) ----------
+export interface AutoReportRequest {
+  title?: string; // trimmed, 1 to 120; default: the dataset's name
+  period_label?: string; // trimmed, up to 60; empty after trimming is stored as null
+}
+
+export interface AutoReportRun {
+  id: ID;
+  dataset_id: ID | null; // null after the dataset is deleted
+  status: 'running' | 'done' | 'failed';
+  blocks_done: number; // questions finished so far (answered or skipped)
+  blocks_total: number; // the number of stored suggestions asked
+  report_id: ID | null; // set when status is 'done'
+  error_message: string | null; // short, user-safe; set when status is 'failed'
+  created_at: ISODateTime;
+}
+
 // ---------- sharing ----------
 export interface ShareLink {
   id: ID;

@@ -74,6 +74,8 @@ Every warning or error message that points the user to the parse dialog names it
 | GET `/blocks/:id/export.csv` | | file | UTF-8 with BOM, comma delimiter, header = column names. Counts as an `export` |
 | POST `/blocks/:id/feedback` | `BlockFeedbackRequest` | `Ack` | Stored as a `feedback` usage event |
 | DELETE `/blocks/:id` | | `Deleted` | 409 `conflict` if pinned in a report |
+| POST `/datasets/:id/auto-report` | `AutoReportRequest` | 202 `AutoReportRun` (`status: 'running'`) | Flow B2. Strict body: `title` trimmed, 1 to 120 (default: the dataset's name); `period_label` trimmed, up to 60 (422 otherwise). Checks in this order: dataset is the caller's (404); `ready` (409 `dataset_not_ready`) and not expired (410 `dataset_expired`); at least 3 stored `suggestions` (422 `validation_failed`); no other auto-report for this dataset is `running` (409 `conflict`); quota pre-check (402 `plan_limit`, see Flow B2). The questions then run in the background |
+| GET `/auto-reports/:id` | | `AutoReportRun` | Client polls every 2 s until `done` or `failed` |
 
 ### Reports
 | Method and path | Request | Response | Notes |
@@ -128,6 +130,13 @@ Every warning or error message that points the user to the parse dialog names it
 2. Server runs plan, sandbox, reconcile, narrate (ARCHITECTURE 3) and returns the `Block`. If `status === 'flagged'`, at least one check failed; show it with an amber banner but still show the answer.
 3. Client shows chart or table, narrative, follow-ups (clicking one asks it), and the "How this was calculated" panel (SQL, checks, source rows button).
 4. "Pin to report" is a client-side selection of block ids until the user creates a report (Flow C).
+
+### Flow B2: build my report
+1. On a `ready` dataset with at least 3 `suggestions`: `POST /datasets/:id/auto-report { title?, period_label? }` returns 202 `AutoReportRun`. Before anything is asked, the remaining `max_questions_per_month` must cover every stored suggestion and the remaining `max_reports_per_month` must cover 1; otherwise 402 `plan_limit` for the first limit that falls short (questions before reports), with `limit` = the plan's limit, `used` = this month's count, and `upgrade_to` = the cheapest plan whose limit covers `used` plus what the run needs. Nothing is asked and no usage is written.
+2. Server asks each stored suggestion in order through the Flow B pipeline (`source: 'suggested'`), at most 2 at a time. Each answered question is a normal block and counts as one `question`. A question that ends in `cannot_answer`, or whose model call fails, is skipped (not retried) and does not count as a `question`. `blocks_done` rises after each question, answered or skipped; `blocks_total` is the number of suggestions.
+3. If fewer than 3 questions were answered, the run ends `failed` with a user-safe `error_message`; the answered blocks stay in the dataset's history and no report is created. Otherwise the server creates a report in the dataset's workspace (title = request `title` or the dataset's name, `period_label` as given, the answered blocks in suggestion order), counted as one `report`; the run ends `done` with `report_id`. A `flagged` block is included like any other and keeps its warning.
+4. The run also ends `failed` if the report cannot be created (for example the monthly report limit was reached meanwhile), if the dataset is deleted while it runs ("The file was deleted."), or if the server restarts ("Interrupted by a restart. Please try again."). The client shows `error_message` and links to the dataset's answers.
+5. Client polls `GET /auto-reports/:id` every 2 s (expect 15 to 40 s) and opens `/reports/:report_id` on `done`.
 
 ### Flow C: report, export, share
 1. `POST /reports` with ordered `block_ids`. Server returns `ReportDetail` including `brand` and `watermark`.

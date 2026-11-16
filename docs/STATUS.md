@@ -46,6 +46,8 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 | S3 | DELETE `/reports/:id` | DONE |
 | S3 | POST `/me/logo` | DONE |
 | S3 | DELETE `/me/logo` | DONE |
+| S3b | POST `/datasets/:id/auto-report` | WIP |
+| S3b | GET `/auto-reports/:id` | WIP |
 | S4 | GET `/reports/:id/export.xlsx` | TODO |
 | S4 | GET `/reports/:id/share-links` | TODO |
 | S4 | POST `/reports/:id/share-links` | TODO |

@@ -28,7 +28,11 @@ Entry format:
   - Storage: either make `report_runs.template_id` nullable and add a `kind` column, or add an `auto_report_runs` table. Server decides in a migration and notes it in STATUS.md.
 - Risks to test: suggested questions may be dull or redundant for some files (offer "add your own question" prominently); a draft report must never present a flagged block as clean.
 - Affects: endpoints above, `api-types.ts` (`AutoReportRun`), `API_CONTRACT.md` (new rows under Questions and blocks, Flow F), slice S3 (needs reports) and a "Build my report" button in the client dataset overview.
-- Status: APPROVED (2026-11-10). Not applied yet: API_CONTRACT.md and api-types.ts are updated at the start of the part that builds it
+- Status: APPLIED (approved 2026-11-10; applied by the server chat 2026-11-16 in Part 4b, as Flow B2 rather than Flow F). Details refined when applying:
+  - `AutoReportRun.dataset_id` is `ID | null` (null after the dataset is deleted). Request type named `AutoReportRequest`; strict body, `title` trimmed 1 to 120, `period_label` trimmed up to 60 (empty is stored as null).
+  - Check order: 404, 409 `dataset_not_ready` / 410 `dataset_expired`, 422 `validation_failed` when fewer than 3 suggestions are stored, 409 `conflict` when another auto-report for the dataset is `running`, then the 402 pre-check (questions before reports; `upgrade_to` is the cheapest plan whose limit covers this month's count plus what the run needs).
+  - A question whose model call fails is skipped like `cannot_answer`. A skipped question writes no `question` usage event (its `llm` events are still written). Flagged blocks keep `status: 'flagged'` and appear in the report unchanged; the report needs no extra marking because blocks already carry their checks.
+  - The run also fails if the report cannot be created, the dataset is deleted mid-run, or the server restarts. Storage: a new `auto_report_runs` table (see STATUS.md).
 
 ## 2026-11-09: Specify the `validation_failed` details shape (from: client)
 - What: the contract says only "zod errors in `details`" for 422 `validation_failed`, and `api-types.ts` has no type for it. The server already sends `details: { fields: Array<{ location: 'body' | 'query' | 'params', path: string, message: string }> }` (documented in STATUS.md server notes, 2026-11-09).
