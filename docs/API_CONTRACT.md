@@ -74,7 +74,7 @@ Every warning or error message that points the user to the parse dialog names it
 | GET `/blocks/:id/export.csv` | | file | UTF-8 with BOM, comma delimiter, header = column names. Counts as an `export` |
 | POST `/blocks/:id/feedback` | `BlockFeedbackRequest` | `Ack` | Stored as a `feedback` usage event |
 | DELETE `/blocks/:id` | | `Deleted` | 409 `conflict` if pinned in a report |
-| POST `/datasets/:id/auto-report` | `AutoReportRequest` | 202 `AutoReportRun` (`status: 'running'`) | Flow B2. Strict body: `title` trimmed, 1 to 120 (default: the dataset's name); `period_label` trimmed, up to 60 (422 otherwise). Checks in this order: dataset is the caller's (404); `ready` (409 `dataset_not_ready`) and not expired (410 `dataset_expired`); at least 3 stored `suggestions` (422 `validation_failed`); no other auto-report for this dataset is `running` (409 `conflict`); quota pre-check (402 `plan_limit`, see Flow B2). The questions then run in the background |
+| POST `/datasets/:id/auto-report` | `AutoReportRequest` | 202 `AutoReportRun` (`status: 'running'`) | Flow B2. Strict body: `title` trimmed, 1 to 120 (default: the dataset's name); `period_label` trimmed, up to 60 (422 otherwise). Checks in this order: dataset is the caller's (404); `ready` (409 `dataset_not_ready`) and not expired (410 `dataset_expired`); at least 3 stored `suggestions` (422 `validation_failed`); no other auto-report for this dataset is `running` (409 `conflict` with `details: AutoReportConflictDetails`, `{ auto_report_id }` = the running run, which the client can poll); quota pre-check (402 `plan_limit`, see Flow B2). The questions then run in the background |
 | GET `/auto-reports/:id` | | `AutoReportRun` | Client polls every 2 s until `done` or `failed` |
 
 ### Reports

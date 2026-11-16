@@ -421,6 +421,11 @@ export interface AutoReportRun {
   created_at: ISODateTime;
 }
 
+/** `details` of the 409 `conflict` from POST /datasets/:id/auto-report when a run for the dataset is already running. */
+export interface AutoReportConflictDetails {
+  auto_report_id: ID; // the running run: poll GET /auto-reports/:id
+}
+
 // ---------- sharing ----------
 export interface ShareLink {
   id: ID;

@@ -5,7 +5,7 @@ import { logger } from '../lib/logger.js';
 import { supabaseForUser } from '../lib/supabase.js';
 import { requireUuidParam, validate } from '../middleware/validate.js';
 import {
-  ALREADY_RUNNING,
+  alreadyRunning,
   type AutoReportBody,
   autoReportBody,
   type AutoReportRow,
@@ -44,7 +44,7 @@ autoReportsRouter.post('/datasets/:id/auto-report', requireUuidParam(), validate
     .eq('status', 'running')
     .limit(1);
   throwIfDbError('auto-report: running', error);
-  if ((running ?? []).length > 0) throw new AppError('conflict', ALREADY_RUNNING);
+  if (running?.[0]) throw alreadyRunning(running[0].id);
   // Nothing is asked unless this month's remaining quota covers every suggestion and one report.
   await assertQuotaCovers(userId, [
     { key: 'max_questions_per_month', needed: dataset.suggestions.length },

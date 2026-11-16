@@ -4,7 +4,7 @@ import { logger } from '../lib/logger.js';
 import { getObject } from '../lib/storage.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { llm } from '../llm/client.js';
-import type { AutoReportRun } from '../types/api.js';
+import type { AutoReportConflictDetails, AutoReportRun } from '../types/api.js';
 import { ask, type AskDeps, AskLlmFailure, type AskInput } from './analysis/ask.js';
 import { saveAnsweredBlock } from './blocks.js';
 import { type ColumnRow, type DatasetRow, getColumns } from './datasets.js';
@@ -26,6 +26,8 @@ export const AUTO_REPORT_CONCURRENCY = 2;
 
 export const NOT_ENOUGH_SUGGESTIONS = `This file needs at least ${MIN_SUGGESTIONS} suggested questions to build a report. Ask your own questions and pin the answers instead.`;
 export const ALREADY_RUNNING = 'A report is already being built for this file. Please wait for it to finish.';
+/** 409 conflict naming the running run, so the client can poll it (AutoReportConflictDetails). */
+export const alreadyRunning = (runId: string) => new AppError('conflict', ALREADY_RUNNING, { auto_report_id: runId } satisfies AutoReportConflictDetails);
 export const FILE_DELETED = 'The file was deleted.';
 export const FILE_UNAVAILABLE = 'The source file is no longer available.';
 export const REPORT_LIMIT_REACHED =
@@ -88,7 +90,11 @@ export async function insertRun(ownerId: string, dataset: DatasetRow, body: Auto
     })
     .select(RUN_COLUMNS)
     .single<AutoReportRow>();
-  if (error?.code === '23505') throw new AppError('conflict', ALREADY_RUNNING);
+  if (error?.code === '23505') {
+    // Another request started a run for this dataset between the route's check and this insert.
+    const { data: other } = await supabaseAdmin().from('auto_report_runs').select('id').eq('owner_id', ownerId).eq('dataset_id', dataset.id).eq('status', 'running').maybeSingle<{ id: string }>();
+    throw other ? alreadyRunning(other.id) : new AppError('conflict', ALREADY_RUNNING);
+  }
   throwIfDbError('auto-report: insert', error);
   return data!;
 }

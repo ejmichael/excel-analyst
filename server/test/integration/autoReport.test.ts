@@ -210,6 +210,9 @@ describe('the auto-report job', () => {
     const second = await start(a, dsA);
     expect(second.status).toBe(409);
     expect(second.body.error.code).toBe('conflict');
+    // details names the running run so another tab or device can poll it (user decision 2026-11-16).
+    expect(second.body.error.details).toEqual({ auto_report_id: first.id });
+    expect((await getRun(a, (second.body.error.details as { auto_report_id: string }).auto_report_id)).status).toBe('running');
     let seen = 0;
     for (let i = 0; i < 40 && seen === 0; i++) {
       await new Promise((r) => setTimeout(r, 250));
