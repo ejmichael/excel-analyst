@@ -9,6 +9,7 @@ import { InlineLoading } from '@/components/PageStatus';
 import { UpgradeDialog } from '@/components/UpgradeDialog';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatNumber } from '@/lib/format';
+import { BuildReportSection } from '@/features/autoReport/BuildReportSection';
 import { ColumnsForm } from './ColumnsForm';
 import { DatasetHeader } from './DatasetHeader';
 import { ParseDialog } from './ParseDialog';
@@ -127,6 +128,7 @@ function ReadyView({ dataset, onCheckReading }: { dataset: DatasetDetail; onChec
 
   return (
     <div className="space-y-8">
+      <BuildReportSection dataset={dataset} />
       {dataset.warnings.length > 0 && (
         <section
           aria-labelledby="warnings-heading"

@@ -75,6 +75,31 @@ export function reportsThisMonth(user: MockUser): number {
   return (user.report_events ?? []).filter((t) => t.slice(0, 10) >= start).length;
 }
 
+/** Stores a new report (checks already done) and counts it against the monthly limit. */
+export function addReport(
+  user: MockUser,
+  input: { workspace_id: string; title: string; subtitle: string | null; period_label: string | null; block_ids: string[] },
+): MockReport {
+  const now = sastTimestamp();
+  const report: MockReport = {
+    report: {
+      id: crypto.randomUUID(),
+      workspace_id: input.workspace_id,
+      title: input.title,
+      subtitle: input.subtitle,
+      period_label: input.period_label,
+      notes: null,
+      template_id: null,
+      created_at: now,
+      updated_at: now,
+    },
+    blocks: input.block_ids.map((block_id) => ({ block_id, heading_override: null })),
+  };
+  reportsOf(user).push(report);
+  (user.report_events ??= []).push(now);
+  return report;
+}
+
 export function isInAnyReport(user: MockUser, blockId: string): boolean {
   return reportsOf(user).some((r) => r.blocks.some((b) => b.block_id === blockId));
 }
@@ -161,23 +186,13 @@ export function routeReports(method: string, url: URL, user: MockUser, body: unk
     const input = parsed.data;
     const problem = checkBlocks(user, input.workspace_id, input.block_ids, (i) => `block_ids.${i}`, null);
     if (problem) return problem;
-    const now = sastTimestamp();
-    const report: MockReport = {
-      report: {
-        id: crypto.randomUUID(),
-        workspace_id: input.workspace_id,
-        title: input.title,
-        subtitle: input.subtitle || null,
-        period_label: input.period_label || null,
-        notes: null,
-        template_id: null,
-        created_at: now,
-        updated_at: now,
-      },
-      blocks: input.block_ids.map((block_id) => ({ block_id, heading_override: null })),
-    };
-    reportsOf(user).push(report);
-    (user.report_events ??= []).push(now);
+    const report = addReport(user, {
+      workspace_id: input.workspace_id,
+      title: input.title,
+      subtitle: input.subtitle || null,
+      period_label: input.period_label || null,
+      block_ids: input.block_ids,
+    });
     return ok(detail(user, report), 201);
   }
 

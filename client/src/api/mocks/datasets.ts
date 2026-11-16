@@ -463,3 +463,8 @@ export function routeDatasets(method: string, url: URL, user: MockUser, body: un
   return fail(404, 'not_found', 'Not found.');
 }
 
+
+/** A dataset's full detail, after settling any finished profiling. Null if not found. */
+export function findDataset(user: MockUser, id: string): DatasetDetail | null {
+  return datasetsOf(user).find((d) => d.detail.id === id)?.detail ?? null;
+}

@@ -133,7 +133,8 @@ export const CARD_SALES: DatasetTemplate = {
     { question: 'How much did card fees cost in total?', why: 'Fees are easy to miss when you only look at gross sales.' },
     { question: 'What were net sales for each day of the month?', why: 'Shows quiet and busy days at a glance.' },
     { question: 'How many refunds were there, and what did they add up to?', why: 'Refunds appear as negative amounts in this file.' },
-    { question: 'Which card type brings in the most sales?', why: 'Splits sales between debit and credit cards.' },
+    // Its mock answer fails a check, so a "Build my report" draft shows the flagged case.
+    { question: 'What is the average sale per store?', why: 'A typical sale differs between stores.' },
   ],
 };
 

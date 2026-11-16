@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ApiError, ErrorCode, PlanLimitDetails, Workspace } from '../types';
 import type { Transport, UploadTransport } from '../client';
 import { buildMe, cheapestPlanAllowing, sastTimestamp, type MockUser } from './data';
+import { routeAutoReports } from './autoReports';
 import { routeBlocks } from './blocks';
 import { handleLogoUpload, routeLogoDelete, routeReports } from './reports';
 import { datasetSnapshot, handleUpload, routeDatasets } from './datasets';
@@ -193,6 +194,13 @@ export const mockTransport: Transport = async (url, init) => {
   if (path === '/reports' || path.startsWith('/reports/')) {
     if (!user.popia_consent_at) return fail(403, 'consent_required', 'Accept the terms and privacy notice first.');
     const result = routeReports(method, parsedUrl, user, body);
+    mockStore.save();
+    if (result) return json(result.status, result.body);
+  }
+
+  if (/^\/(datasets\/[^/]+\/auto-report|auto-reports\/[^/]+)$/.test(path)) {
+    if (!user.popia_consent_at) return fail(403, 'consent_required', 'Accept the terms and privacy notice first.');
+    const result = routeAutoReports(method, path, user, body);
     mockStore.save();
     if (result) return json(result.status, result.body);
   }

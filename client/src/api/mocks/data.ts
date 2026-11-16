@@ -1,4 +1,4 @@
-import type { Me, Plan, PlanLimits, Usage, Workspace } from '../types';
+import type { AutoReportRun, Me, Plan, PlanLimits, Usage, Workspace } from '../types';
 import type { MockBlock } from './blocks';
 import type { MockReport } from './reports';
 import type { MockDataset } from './datasets';
@@ -95,6 +95,25 @@ export interface MockUser {
   report_events?: string[];
   /** The uploaded logo as a data URL (never a remote URL). */
   logo_data_url?: string | null;
+  /** "Build my report" runs (S3b). */
+  auto_report_runs?: MockAutoReportRun[];
+}
+
+/** A scripted auto-report run: it moves on with time, like the server's background job. */
+export interface MockAutoReportRun {
+  run: AutoReportRun;
+  /** The questions it asks (the dataset's suggestions when it started). */
+  questions: string[];
+  started_ms: number;
+  /** How long each question takes. */
+  step_ms: number;
+  /** 'fail' ends failed after two answers. */
+  variant: 'normal' | 'fail';
+  /** The answers made so far, in question order. */
+  block_ids: string[];
+  /** For the report: the request's title (or the file's name) and period. */
+  title: string;
+  period_label: string | null;
 }
 
 /** First day of the current month in SAST (UTC+2, no DST), as YYYY-MM-DD. */
@@ -114,7 +133,7 @@ export function buildMe(user: MockUser): Me {
     month_start: sastMonthStart(),
     uploads: (user.datasets ?? []).filter((ds) => ds.detail.created_at.slice(0, 10) >= sastMonthStart()).length,
     questions: (user.question_events ?? []).filter((t) => t.slice(0, 10) >= sastMonthStart()).length,
-    reports: 0,
+    reports: (user.report_events ?? []).filter((t) => t.slice(0, 10) >= sastMonthStart()).length,
     report_runs: 0,
     exports: 0,
     workspaces: user.workspaces.length,
