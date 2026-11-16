@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { PlanLimitDetails, ShareLink } from '../types';
+import type { PlanLimitDetails, PublicReport, ShareLink } from '../types';
 import { MOCK_PLAN_LIMITS, cheapestPlanAllowing, sastTimestamp, type MockUser } from './data';
 import { reportDetail, reportsOf } from './reports';
 import { MOCK_XLSX_BASE64 } from './xlsxFixture';
@@ -8,7 +8,7 @@ import { MOCK_XLSX_BASE64 } from './xlsxFixture';
  * Mock export and share links (S4), following the contract and the server's S4 notes. Variants (client/README.md):
  * a report titled with "busy" answers the Excel export with 429 and Retry-After; links made on a report titled with
  * "expired" are already expired; a report titled with "personal", or an answer with a column such as email, phone or
- * customer, is flagged contains_personal_data.
+ * customer, is flagged contains_personal_data. The public token "busy" answers 429.
  */
 
 type Result = { status: number; body?: unknown; raw?: Response };
@@ -51,6 +51,55 @@ function newToken(): string {
 
 function slug(text: string): string {
   return text.normalize('NFKD').replace(/[^\x20-\x7e]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'report';
+}
+
+/** The server's words: one identical 404 for an unknown, expired or turned-off link. */
+const UNAVAILABLE = { error: { code: 'not_found', message: 'This link is not valid. Ask the sender for a new one.' } };
+const PUBLIC_HEADERS = {
+  'Content-Type': 'application/json',
+  'Cache-Control': 'no-store',
+  'X-Robots-Tag': 'noindex, nofollow',
+  'Referrer-Policy': 'no-referrer',
+};
+
+/**
+ * GET /public/reports/:token (no sign-in). The token "busy" answers 429 with Retry-After (mock variant). The report
+ * has no workspace, template or dataset ids; sql and checks only with show_working; never source rows.
+ */
+export function routePublicReport(users: MockUser[], token: string): Response {
+  if (token === 'busy') {
+    return new Response(JSON.stringify({ error: { code: 'rate_limited', message: 'Too many requests.' } }), {
+      status: 429,
+      headers: { ...PUBLIC_HEADERS, 'Retry-After': '20' },
+    });
+  }
+  const unavailable = () => new Response(JSON.stringify(UNAVAILABLE), { status: 404, headers: PUBLIC_HEADERS });
+  const owner = users.find((u) => (u.share_links ?? []).some((l) => l.token === token));
+  const link = owner?.share_links?.find((l) => l.token === token);
+  if (!owner || !link) return unavailable();
+  if (link.revoked_at || (link.expires_at && Date.parse(link.expires_at) <= Date.now())) return unavailable();
+  const report = reportsOf(owner).find((r) => r.report.id === link.report_id);
+  if (!report) return unavailable();
+
+  link.view_count += 1;
+  const { workspace_id: _workspace, template_id: _template, blocks, ...rest } = reportDetail(owner, report);
+  const data: PublicReport = {
+    ...rest,
+    blocks: blocks.map(({ position, heading_override, block }) => {
+      const { dataset_id: _dataset, ...publicBlock } = block;
+      return {
+        position,
+        heading_override,
+        block: {
+          ...publicBlock,
+          sql: link.show_working ? publicBlock.sql : '',
+          checks: link.show_working ? publicBlock.checks : [],
+          has_source_rows: false,
+        },
+      };
+    }),
+  };
+  return new Response(JSON.stringify({ data }), { status: 200, headers: PUBLIC_HEADERS });
 }
 
 export function routeSharing(method: string, path: string, user: MockUser, body: unknown, origin: string): Result | null {

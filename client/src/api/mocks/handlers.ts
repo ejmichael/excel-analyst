@@ -5,7 +5,7 @@ import { buildMe, cheapestPlanAllowing, sastTimestamp, type MockUser } from './d
 import { routeAutoReports } from './autoReports';
 import { routeBlocks } from './blocks';
 import { handleLogoUpload, routeLogoDelete, routeReports } from './reports';
-import { routeSharing } from './sharing';
+import { routePublicReport, routeSharing } from './sharing';
 import { datasetSnapshot, handleUpload, routeDatasets } from './datasets';
 import { mockStore } from './store';
 
@@ -152,6 +152,14 @@ export const mockTransport: Transport = async (url, init) => {
   const token = auth?.startsWith('Bearer ') ? auth.slice('Bearer '.length) : null;
 
   if (path === '/health' && method === 'GET') return ok({ status: 'ok', time: sastTimestamp() });
+
+  // Public report: no sign-in; any Authorization header is ignored.
+  const publicReport = /^\/public\/reports\/([^/]+)$/.exec(path);
+  if (publicReport && method === 'GET') {
+    const response = routePublicReport(mockStore.allUsers(), decodeURIComponent(publicReport[1] ?? ''));
+    mockStore.save();
+    return response;
+  }
 
   const user = mockStore.userByToken(token);
   if (!user) return fail(401, 'unauthorized', 'Missing or invalid token.');

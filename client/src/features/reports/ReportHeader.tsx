@@ -54,6 +54,8 @@ export function ReportHeader({
             src={brand.logo_url ?? undefined}
             alt={brand.business_name ? `${brand.business_name} logo` : 'Logo'}
             className="h-10 max-w-[10rem] rounded-sm bg-white/90 object-contain p-1"
+            // A shared report's address must not leak to the image host.
+            referrerPolicy="no-referrer"
             onError={onLogoError}
           />
         )}

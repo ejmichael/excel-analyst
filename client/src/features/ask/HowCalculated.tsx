@@ -191,7 +191,18 @@ export function SourceRowsPanel({ block, dataset }: { block: Block; dataset: Dat
 }
 
 /** The "How this was calculated" disclosure. */
-export function HowCalculated({ block, dataset, defaultOpen }: { block: Block; dataset: DatasetState; defaultOpen: boolean }) {
+export function HowCalculated({
+  block,
+  dataset,
+  defaultOpen,
+  publicView = false,
+}: {
+  block: Block;
+  dataset: DatasetState;
+  defaultOpen: boolean;
+  /** On a shared report: neutral wording and never the source rows (they are never available on public links). */
+  publicView?: boolean;
+}) {
   const [open, setOpen] = useState(defaultOpen);
   const id = useId();
   return (
@@ -213,15 +224,18 @@ export function HowCalculated({ block, dataset, defaultOpen }: { block: Block; d
       {open && (
         <div id={id} data-print-disclosure className="space-y-5 border-t px-4 py-4">
           <p className="text-sm">
-            Analyst wrote a query, ran it on your file, and the numbers below come from that result. The AI did not calculate
-            them.
+            {publicView
+              ? 'Analyst wrote a query, ran it on the file, and the numbers come from that result. The AI did not calculate them.'
+              : 'Analyst wrote a query, ran it on your file, and the numbers below come from that result. The AI did not calculate them.'}
           </p>
-          <SqlPanel sql={block.sql} />
-          <div className="space-y-2">
-            <h4 className="font-sans text-sm font-semibold">Checks</h4>
-            <ChecksList block={block} />
-          </div>
-          <SourceRowsPanel block={block} dataset={dataset} />
+          {block.sql && <SqlPanel sql={block.sql} />}
+          {block.checks.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-sans text-sm font-semibold">Checks</h4>
+              <ChecksList block={block} />
+            </div>
+          )}
+          {!publicView && <SourceRowsPanel block={block} dataset={dataset} />}
         </div>
       )}
     </div>

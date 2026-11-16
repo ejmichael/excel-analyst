@@ -46,6 +46,10 @@ export const mockStore = {
     persist();
     return user;
   },
+  /** Every mock account (the public report route looks a share link up across all of them). */
+  allUsers(): MockUser[] {
+    return Object.values(state.users);
+  },
   userByToken(token: string | null): MockUser | undefined {
     if (!token?.startsWith('mock-token:')) return undefined;
     const email = token.slice('mock-token:'.length);

@@ -44,7 +44,8 @@ interface AnswerCardProps {
    * 'report': inside a report. Same chart, narrative, checks and working, but no "Ask next", no feedback, delete or
    * "Add to report", and "How this was calculated" starts closed.
    */
-  mode?: 'answer' | 'report';
+  /** 'public': a shared report. As 'report', and "How this was calculated" only when the link shows the working. */
+  mode?: 'answer' | 'report' | 'public';
   /** Shown instead of the answer's title (a report's heading_override). */
   heading?: string;
   onFollowUp?: (question: string) => void;
@@ -63,7 +64,10 @@ export function AnswerCard({
   onFollowUp,
   onDeleted,
 }: AnswerCardProps) {
-  const inReport = mode === 'report';
+  const isPublic = mode === 'public';
+  const inReport = mode === 'report' || isPublic;
+  // On a shared report the server sends the SQL and checks only when the link shows the working.
+  const hasWorking = !isPublic || block.sql !== '' || block.checks.length > 0;
   const headingId = useId();
   const Heading = headingLevel === 3 ? 'h3' : 'h2';
   const failed = block.checks.filter((c) => !c.ok);
@@ -90,14 +94,17 @@ export function AnswerCard({
               {/* The draft report's notice refers to this label. */}
               <p className="font-semibold">Check the numbers</p>
               <p className="font-medium">Some checks did not pass, so check these numbers before you rely on them.</p>
-              <ul className="list-disc space-y-1 pl-5 text-sm">
-                {failed.map((c, i) => (
-                  <li key={`${c.type}-${i}`}>
-                    {c.label}
-                    {c.detail ? `: ${c.detail}` : ''}
-                  </li>
-                ))}
-              </ul>
+              {/* A shared report without its working has no checks to list; the warning above still shows. */}
+              {failed.length > 0 && (
+                <ul className="list-disc space-y-1 pl-5 text-sm">
+                  {failed.map((c, i) => (
+                    <li key={`${c.type}-${i}`}>
+                      {c.label}
+                      {c.detail ? `: ${c.detail}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>
@@ -132,7 +139,7 @@ export function AnswerCard({
         </div>
       )}
 
-      <HowCalculated block={block} dataset={dataset} defaultOpen={newest && !inReport} />
+      {hasWorking && <HowCalculated block={block} dataset={dataset} defaultOpen={newest && !inReport} publicView={isPublic} />}
 
       {!inReport && <AnswerActions block={block} dataset={dataset} onDeleted={onDeleted} />}
     </article>

@@ -25,6 +25,12 @@ function Root() {
 }
 
 export const routes: RouteObject[] = [
+  // A shared report: outside the app (no sign-in, navigation, workspace switcher or consent gate). Loaded on demand.
+  {
+    path: '/r/:token',
+    lazy: async () => ({ Component: (await import('@/features/public/PublicReportPage')).PublicReportPage }),
+    hydrateFallbackElement: <InlineLoading label="Loading" />,
+  },
   {
     element: <Root />,
     children: [
