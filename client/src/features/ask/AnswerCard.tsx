@@ -87,6 +87,8 @@ export function AnswerCard({
           <div className="flex items-start gap-2">
             <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
             <div className="space-y-2">
+              {/* The draft report's notice refers to this label. */}
+              <p className="font-semibold">Check the numbers</p>
               <p className="font-medium">Some checks did not pass, so check these numbers before you rely on them.</p>
               <ul className="list-disc space-y-1 pl-5 text-sm">
                 {failed.map((c, i) => (

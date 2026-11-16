@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowLeft, ArrowUp, Download, LayoutTemplate, Pencil, Plus, Share2, Trash2, X } from 'lucide-react';
 import { errorMessage, isApiError } from '@/api/client';
@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { AnswerCard } from '@/features/ask/AnswerCard';
 import type { DatasetState } from '@/features/ask/HowCalculated';
 import { AddAnswersDialog } from './AddAnswersDialog';
+import { DraftBanner, draftDismissals } from './DraftBanner';
 import { PERIOD_MAX, SUBTITLE_MAX, TITLE_MAX } from './CreateReportDialog';
 import { useDeleteReport, useReport, useUpdateReport, reportKeys } from './queries';
 import { ReportHeader } from './ReportHeader';
@@ -103,6 +104,10 @@ function ReportView({ report }: { report: ReportDetail }) {
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [logoAttempts, setLogoAttempts] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [draftDismissed, setDraftDismissed] = useState(() => draftDismissals.has(report.id));
+  // Made by "Build my report": a notice that it is a draft, until dismissed for this report.
+  const showDraftBanner = searchParams.get('draft') === '1' && !draftDismissed;
   const update = useUpdateReport(report.id);
   const remove = useDeleteReport(report.id, report.workspace_id);
 
@@ -178,6 +183,24 @@ function ReportView({ report }: { report: ReportDetail }) {
 
   return (
     <div className="space-y-6">
+      {showDraftBanner && (
+        <DraftBanner
+          report={report}
+          onEdit={startEditing}
+          onDismiss={() => {
+            draftDismissals.add(report.id);
+            setDraftDismissed(true);
+            // Replace, not push: Back should not bring the notice back.
+            setSearchParams(
+              (params) => {
+                params.delete('draft');
+                return params;
+              },
+              { replace: true },
+            );
+          }}
+        />
+      )}
       {/* Actions. Download, Share and Save as template come in later parts. */}
       <div className="flex flex-wrap gap-2" role="group" aria-label="Report actions">
         {!editing && (
