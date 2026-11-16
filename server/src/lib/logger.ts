@@ -13,6 +13,9 @@ export const logger = pino({
   },
 });
 
+/** The path as logged: no query string, and a public share-link token replaced (a token is a password). */
+export const logPath = (url: string | undefined) => (url ?? '').split('?')[0]!.replace(/(\/public\/reports\/)[^/]*/, '$1[token]');
+
 export const httpLogger = pinoHttp({
   logger,
   // Keep request logs to method and path; query strings and headers can carry tokens.
@@ -20,7 +23,7 @@ export const httpLogger = pinoHttp({
     req: (req: IncomingMessage & { id?: unknown }) => ({
       id: req.id,
       method: req.method,
-      path: (req.url ?? '').split('?')[0],
+      path: logPath(req.url),
     }),
     res: (res: ServerResponse) => ({ status: res.statusCode }),
   },

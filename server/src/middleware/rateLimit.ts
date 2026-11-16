@@ -59,3 +59,13 @@ export const userRateLimit: RequestHandler = rateLimit({
   keyGenerator: (req) => (req.auth ? `user:${req.auth.userId}` : ipKey(req)),
   handler,
 });
+
+/** Public routes (share links): 60 per minute per IP. */
+export const publicRateLimit: RequestHandler = rateLimit({
+  windowMs: WINDOW_MS,
+  limit: 60,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: (req) => `public:${ipKeyGenerator(req.ip ?? 'unknown')}`,
+  handler,
+});

@@ -16,6 +16,7 @@ import { internalRouter } from './routes/internal.js';
 import { brandingRouter } from './routes/branding.js';
 import { meRouter } from './routes/me.js';
 import { reportsRouter } from './routes/reports.js';
+import { publicRouter, shareLinksRouter } from './routes/shareLinks.js';
 import { workspacesRouter } from './routes/workspaces.js';
 
 export function createApp(): Express {
@@ -39,6 +40,7 @@ export function createApp(): Express {
   const v1 = Router();
   v1.use(healthRouter);
   v1.use(internalRouter); // x-cron-secret, no user token
+  v1.use(publicRouter); // share links: no user token, never reads Authorization
 
   // Everything below needs a valid Supabase access token.
   v1.use(requireAuth, userRateLimit);
@@ -52,6 +54,7 @@ export function createApp(): Express {
   v1.use(reportsRouter);
   v1.use(brandingRouter);
   v1.use(autoReportsRouter);
+  v1.use(shareLinksRouter);
 
   app.use('/api/v1', v1);
   app.use(notFoundHandler);

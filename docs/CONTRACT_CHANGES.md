@@ -106,3 +106,14 @@ Entry format:
   2. Treat the owner's DELETE response like the owner's list: it returns the full `ShareLink`, token included. (Alternative: DELETE returns the link with `token: ''` and `url: ''`.) Recommended: the full link, since it never leaves the owner's session.
 - Affects: `api-types.ts` (`PublicReport`), `GET /public/reports/:token`, `DELETE /share-links/:id`, the client's public page and share dialog.
 - Status: APPLIED (approved by the user 2026-11-16: (1) the Omit types `PublicBlock`, `PublicReportBlock` and `PublicReport`; (2) DELETE returns the full ShareLink, token and url included; tokens are still never logged)
+
+## 2026-11-16: Logo on public reports (from: server)
+- What: `Brand.logo_url` is a Supabase signed URL. Its path is `…/storage/v1/object/sign/branding/<owner_id>/logo.<ext>?token=<JWT>`, and the JWT repeats that path. On `GET /public/reports/:token` it would therefore carry the owner's id and a storage path, which the contract's "Public reports" rule (2026-11-16) says the public JSON never contains, and which the leak test rightly rejects.
+- Why: the logo path is built from the owner id (Part 4 decision, so a logo can never be written to another owner's path). Any signed URL to it names that path.
+- Proposed shape (pick one for public responses only; the owner's `Me` and `ReportDetail` keep the signed URL):
+  1. `logo_url` is a `data:` URL (`data:image/png;base64,...`) of the stored logo. No new endpoint. The logo is at most 1 MB (about 1.4 MB as base64; typical logos are 10 to 100 KB), checked by content at upload, so the type is known. Recommended.
+  2. A new endpoint `GET /public/reports/:token/logo` that streams the image (same 404 rules and headers), and `logo_url` points at it. Smaller JSON, cacheable per view, but a new endpoint.
+  3. `logo_url: null` on public reports (no logo on shared pages).
+- Until decided, the server returns `brand.logo_url: null` on public reports, and `GET /public/reports/:token` stays `WIP` in STATUS.md.
+- Affects: `GET /public/reports/:token`, the client's public page.
+- Status: PROPOSED
