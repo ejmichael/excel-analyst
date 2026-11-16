@@ -25,6 +25,7 @@ Rules for the chart
   Pie only for up to 6 parts of a whole. A single value: kpi. Many columns or rows: table. Honour the user's chart hint if sensible.
 - x is the result column for the axis (null for kpi or table). y lists the numeric result columns. series is a result column that splits lines or bars, or null.
 - value_format must describe every result column: zar for rand amounts, number for decimals, integer for counts, percent for fractions, date for dates, text for labels.
+- Years and other calendar numbers such as a founded year or a year of purchase must be returned as text (for example CAST(year AS VARCHAR)) with value_format text, never as integer, so they are not shown with thousands separators. For decades return text such as '1990s'.
 
 Other fields
 - title: a plain-English title of the answer, under 70 characters, no numbers that come from the data.

@@ -1,8 +1,8 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { parse } from 'csv-parse/sync';
+import { writeFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { BlockDraft } from '../../src/services/analysis/ask.js';
 import type { CellValue } from '../../src/types/api.js';
+import { bankStatement, cardSales, round2, sumBy, webOrders } from './fixtureRows.js';
 import { addSyntheticFile, describeAnswer, type LocalAnswer, localAsk } from './localAsk.js';
 
 /**
@@ -11,60 +11,10 @@ import { addSyntheticFile, describeAnswer, type LocalAnswer, localAsk } from './
  * not DuckDB, not the Part 2 parser, and not the model's output.
  */
 
-const FIX = new URL('../../../fixtures/', import.meta.url);
-const raw = (name: string) => readFileSync(new URL(name, FIX));
 
 // ---------- hand-computed truth from the raw files ----------
 
-/** "1 234,56" / "-1 578,28" -> number, by hand. */
-const commaAmount = (s: string) => Number(s.replace(/\s/g, '').replace(',', '.'));
-/** "1,234.56" -> number. */
-const dotAmount = (s: string) => Number(s.replace(/,/g, ''));
-const round2 = (n: number) => Math.round(n * 100) / 100;
-
-function cardSales() {
-  const text = new TextDecoder('windows-1252').decode(raw('01_card_sales_semicolon_win1252.csv'));
-  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '');
-  const header = lines.findIndex((l) => l.startsWith('Transaction Date;'));
-  const rows: Array<{ date: string; store: string; card: string; gross: number; net: number }> = [];
-  for (const line of lines.slice(header + 1)) {
-    const f = line.split(';');
-    if (f[0] === 'Total') continue;
-    const [d, m, y] = f[0]!.split('/');
-    rows.push({ date: `${y}-${m}-${d}`, store: f[3]!, card: f[4]!, gross: commaAmount(f[6]!), net: commaAmount(f[8]!) });
-  }
-  return rows;
-}
-
-function webOrders() {
-  const records = parse(raw('02_webstore_orders_utf8bom.csv'), { bom: true, columns: true }) as Array<Record<string, string>>;
-  return records.map((r) => ({
-    date: r['Created at']!.slice(0, 10),
-    product: r.Product!,
-    quantity: Number(r.Quantity),
-    total: Number(r.Total),
-    status: r['Payment status']!,
-    province: r.Province!,
-    customer: r['Customer email']!,
-  }));
-}
-
-function bankStatement() {
-  const records = parse(raw('03_bank_statement_comma_quoted.csv'), { relax_column_count: true, from_line: 3 }) as string[][];
-  const rows: Array<{ date: string; description: string; amount: number; balance: number }> = [];
-  for (const f of records.slice(1)) {
-    if (f[0] === 'Total' || !f[0]) continue;
-    const [d, m, y] = f[0].split('/');
-    rows.push({ date: `${y}-${m}-${d}`, description: f[1]!, amount: dotAmount(f[2]!), balance: dotAmount(f[3]!) });
-  }
-  return rows;
-}
-
-const sumBy = <T>(rows: T[], key: (r: T) => string, value: (r: T) => number) => {
-  const out = new Map<string, number>();
-  for (const r of rows) out.set(key(r), (out.get(key(r)) ?? 0) + value(r));
-  return new Map([...out].map(([k, v]) => [k, round2(v)]));
-};
+// Moved to fixtureRows.ts (shared with the auto-report run).
 
 // ---------- generic verifiers over a block's rows ----------
 
@@ -150,6 +100,25 @@ const contacts = Array.from({ length: 40 }, (_, i) => ({
   company: ['Spaza One', 'Padstal Two', 'Bakkery Three'][i % 3]!,
 }));
 addSyntheticFile(CONTACTS, Buffer.from(`Name,Email,Job title,Company\n${contacts.map((c) => `${c.name},${c.email},${c.title},${c.company}`).join('\n')}\n`));
+
+// A synthetic equipment register (made-up items): 24 items bought between 2015 and 2024 (Part 4b: years as text).
+const EQUIPMENT = 'synthetic_equipment.csv';
+const equipment = Array.from({ length: 24 }, (_, i) => ({
+  item: `${['Oven', 'Fridge', 'Till', 'Mixer', 'Van', 'Laptop'][i % 6]} ${i + 1}`,
+  year: 2015 + ((i * 7) % 10),
+  cost: round2(1500 + ((i * 3779) % 42000) + (i % 4) * 0.25),
+}));
+addSyntheticFile(EQUIPMENT, Buffer.from(`Item,Year of purchase,Cost\n${equipment.map((e) => `${e.item},${e.year},${e.cost.toFixed(2)}`).join('\n')}\n`));
+
+/** A year column comes back as text with value_format text (never an integer shown as "2 019"). */
+function yearsAsText(b: BlockDraft): string[] {
+  const col = b.columns.find((c) => /year/i.test(c.name));
+  if (!col) return ['no year column in the result'];
+  const problems: string[] = [];
+  if (b.chart.value_format[col.name] !== 'text') problems.push(`year column "${col.name}" has value_format ${b.chart.value_format[col.name]}`);
+  if (b.rows.some((r) => typeof r[col.name] !== 'string')) problems.push(`year column "${col.name}" is not text`);
+  return problems;
+}
 
 // ---------- the question set ----------
 
@@ -252,6 +221,13 @@ const cases: Case[] = [
     question: 'Which 5 days had the highest gross sales?',
     verify: (b) => topValues(b, [...sumBy(card, (r) => r.date, (r) => r.gross).values()].sort((x, y) => y - x).slice(0, 5)),
   },
+
+  // ----- prompt polish (Part 4b): a year column -----
+  {
+    fixture: EQUIPMENT,
+    question: 'How much did we spend on equipment in each year of purchase?',
+    verify: (b) => [...yearsAsText(b), ...hasPairs(b, sumBy(equipment, (e) => String(e.year), (e) => e.cost))],
+  },
 ];
 
 const report: string[] = [];
@@ -281,7 +257,15 @@ describe.skipIf(!process.env.RUN_LLM_TESTS)('ask with the real models', () => {
     }
     report.push(`per question: avg $${(costs.reduce((s, c) => s + c, 0) / costs.length).toFixed(6)}, median ${latencies[Math.floor(latencies.length / 2)]} ms, slowest ${latencies[latencies.length - 1]} ms, ${answered.length}/${answers.length} answered`);
     report.push(`disagreements with hand-computed values: ${answers.filter((x) => x.problems.length > 0).map((x) => `"${x.c.question}": ${x.problems.join('; ')}`).join(' | ') || 'none'}`);
-    report.push(`flagged blocks: ${answered.filter(({ a }) => a.result.kind === 'answered' && a.result.block.status === 'flagged').map(({ c, a }) => `"${c.question}": ${a.result.kind === 'answered' ? a.result.block.checks.filter((k) => !k.ok).map((k) => k.label).join(', ') : ''}`).join(' | ') || 'none'}`);
+    const retried = answers.filter(({ a }) => a.calls.filter((c) => c.purpose === 'narrate').length > 1);
+    report.push(`narrator retries: ${retried.length} of ${answered.length} answered${retried.length ? ` (${retried.map(({ c, a }) => `"${c.question}": ${a.calls.filter((k) => k.purpose === 'narrate' && k.reason).map((k) => k.reason).join(', ')}`).join(' | ')})` : ''}`);
+    for (const { c, a } of answered) {
+      if (a.result.kind !== 'answered') continue;
+      for (const col of a.result.block.columns.filter((k) => /year|decade/i.test(k.name))) {
+        report.push(`year column: "${c.question}" -> ${col.name}, value_format ${a.result.block.chart.value_format[col.name]}, first value ${JSON.stringify(a.result.block.rows[0]?.[col.name])}`);
+      }
+    }
+    report.push(`flagged blocks:${answered.filter(({ a }) => a.result.kind === 'answered' && a.result.block.status === 'flagged').map(({ c, a }) => `"${c.question}": ${a.result.kind === 'answered' ? a.result.block.checks.filter((k) => !k.ok).map((k) => k.label).join(', ') : ''}`).join(' | ') || 'none'}`);
     console.log(report.join('\n'));
     // vitest can hide console output from hooks; LLM_REPORT=<path> also writes the report to a file.
     if (process.env.LLM_REPORT) writeFileSync(process.env.LLM_REPORT, report.join('\n'));
@@ -309,7 +293,10 @@ describe.skipIf(!process.env.RUN_LLM_TESTS)('ask with the real models', () => {
       // User decision 2026-11-12: no doubled currency, no talk of where the numbers came from.
       const text = a.result.block.narrative.replace(/[  ]/g, ' ');
       if (/\bR\s?R\s?\d|\bZAR\s?R\s?\d|\bR\s?[\d ]+(?:,\d+)?\s?(?:ZAR|rands?)\b/i.test(text)) problems.push('doubled currency in the narrative');
-      if (/\brows?\b|\bthe (?:query|result|data)\b/i.test(text)) problems.push('narrative talks about rows, the query, the result or the data');
+      // 2026-11-16 (Part 4b): also "this result" and "each row".
+      if (/\brows?\b|\beach row\b|\bthe (?:query|result|data)\b|\bthis result\b/i.test(text)) {
+        problems.push('narrative talks about rows, each row, the query, the result, this result or the data');
+      }
       // User decision 2026-11-13: nothing comes back flagged unless there is a real discrepancy.
       const failed = a.result.block.checks.filter((k) => !k.ok);
       if (failed.length > 0) problems.push(`flagged: ${failed.map((k) => `${k.type} (${k.label}${k.expected !== undefined ? `, expected ${k.expected}, actual ${k.actual}` : ''})`).join('; ')}`);

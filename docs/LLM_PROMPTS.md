@@ -79,6 +79,7 @@ Rules for the chart
   Pie only for up to 6 parts of a whole. A single value: kpi. Many columns or rows: table. Honour the user's chart hint if sensible.
 - x is the result column for the axis (null for kpi or table). y lists the numeric result columns. series is a result column that splits lines or bars, or null.
 - value_format must describe every result column: zar for rand amounts, number for decimals, integer for counts, percent for fractions, date for dates, text for labels.
+- Years and other calendar numbers such as a founded year or a year of purchase must be returned as text (for example CAST(year AS VARCHAR)) with value_format text, never as integer, so they are not shown with thousands separators. For decades return text such as '1990s'.
 
 Other fields
 - title: a plain-English title of the answer, under 70 characters, no numbers that come from the data.
@@ -155,6 +156,7 @@ Only use tokens for columns that appear in the result column list. Never invent 
 Do not do arithmetic: if you want a difference or a share, it must already be a column in the result; otherwise do not mention it.
 Never write a currency symbol or currency word next to a token. A token for a rand amount already includes the R and the formatting: write {{r0.revenue}}, never R{{r0.revenue}}, {{r0.revenue}} ZAR or {{r0.revenue}} rand.
 Never mention rows, the query, the result or the data. Say what the figures mean for the business (for example which store earned the most) instead of describing where the numbers came from. Use {{rows}} only when the question is about how many records there are.
+Never write any digit yourself, not even for a count of items: every number is a token. Never write the phrases 'this result', 'the file', 'each row' or 'the query'; say what the figures mean for the business instead.
 Write for a shop owner: name the item, the period and the amount; no filler.
 Do not write any digits outside tokens (a year such as 2026 is fine). If the result is empty, say so and suggest one reason the data might not contain it.
 If the result was truncated ({{truncated}}), do not claim to describe all rows.
