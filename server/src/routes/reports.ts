@@ -28,7 +28,7 @@ import {
   type UpdateReportBody,
 } from '../services/reports.js';
 import { recordUsage } from '../services/usageEvents.js';
-import type { Deleted, Paged, Report } from '../types/api.js';
+import type { Deleted, Paged, Report, ValidationFailedDetails } from '../types/api.js';
 
 export const reportsRouter = Router();
 
@@ -138,6 +138,13 @@ reportsRouter.delete('/reports/:id', requireUuidParam(), async (req, res) => {
 
 const EXPORT_TOO_LARGE = 'This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again.';
 
+/** 422 with a machine-readable reason (ValidationFailedDetails.reason), so the client need not match the message. */
+const exportTooLarge = () =>
+  new AppError('validation_failed', EXPORT_TOO_LARGE, {
+    fields: [{ location: 'params', path: 'id', message: EXPORT_TOO_LARGE }],
+    reason: 'export_too_large',
+  } satisfies ValidationFailedDetails);
+
 /** The workbook's cell count from row_count and the column list of each answer (no rows read). */
 async function reportCellEstimate(db: SupabaseClient, userId: string, reportId: string): Promise<number> {
   const ids = (await getMembers(db, userId, reportId)).map((m) => m.block_id);
@@ -163,7 +170,7 @@ reportsRouter.get('/reports/:id/export.xlsx', requireUuidParam(), async (req, re
   const cells = await reportCellEstimate(db, userId, report.id);
   if (cells > MAX_EXPORT_CELLS) {
     logger.warn({ report_id: report.id, cells }, 'export too large');
-    throw new AppError('internal', EXPORT_TOO_LARGE);
+    throw exportTooLarge();
   }
   const detail = await buildReportDetail(db, userId, report);
   const [plan, allLimits] = await Promise.all([supabaseLimitsDataSource.getPlan(userId), supabaseLimitsDataSource.getAllPlanLimits()]);
@@ -178,7 +185,7 @@ reportsRouter.get('/reports/:id/export.xlsx', requireUuidParam(), async (req, re
   } catch (err) {
     if (err instanceof ExportTooLarge) {
       logger.warn({ report_id: detail.id, cells: err.cells }, 'export too large');
-      throw new AppError('internal', EXPORT_TOO_LARGE);
+      throw exportTooLarge();
     }
     throw err;
   } finally {

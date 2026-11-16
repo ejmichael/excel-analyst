@@ -124,4 +124,4 @@ Entry format:
   1. **No type change (recommended):** `details: { fields: [{ location: "params", path: "id", message: "<the message>" }] }`. This endpoint has no body or query, and a malformed id is 404, so a 422 from `export.xlsx` can only mean "too large"; the client keys on status 422 + `validation_failed` + `fields[0].path === "id"` on this endpoint.
   2. **Small additive type change:** as in option 1, plus an optional `reason?: 'export_too_large'` on `ValidationFailedDetails` (absent everywhere else), so the client can key on `details.reason` without knowing the endpoint.
 - Affects: `GET /reports/:id/export.xlsx` (API_CONTRACT Reports row and the "Exports" rule), `api-types.ts` only for option 2, client Download Excel error handling (switch from matching the message text), server route and integration test.
-- Status: PROPOSED
+- Status: APPLIED (approved by the user 2026-11-16, option 2; applied by the server chat 2026-11-17: 422 `validation_failed`, same message, not counted, `details: { fields: [{ location: "params", path: "id", message }], reason: "export_too_large" }`; `ValidationFailedDetails.reason` added to api-types.ts)

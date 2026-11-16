@@ -217,8 +217,14 @@ describe('GET /reports/:id/export.xlsx', () => {
     const before = await events(a, 'export');
     const started = Date.now();
     const res = await request(app).get(api(`/reports/${reportId as string}/export.xlsx`)).set(bearer(a));
-    expect(res.status, res.text).toBe(500);
-    expect(res.body.error).toEqual({ code: 'internal', message: 'This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again.' });
+    // User decision 2026-11-16: 422 validation_failed with a machine-readable reason (was 500 internal).
+    const message = 'This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again.';
+    expect(res.status, res.text).toBe(422);
+    expect(res.body.error).toEqual({
+      code: 'validation_failed',
+      message,
+      details: { fields: [{ location: 'params', path: 'id', message }], reason: 'export_too_large' },
+    });
     expect(await events(a, 'export')).toBe(before);
     // Refused from the row counts and column lists alone: well under the time a 3 MB read and a workbook build take.
     expect(Date.now() - started).toBeLessThan(5_000);
