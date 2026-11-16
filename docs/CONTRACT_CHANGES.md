@@ -114,6 +114,5 @@ Entry format:
   1. `logo_url` is a `data:` URL (`data:image/png;base64,...`) of the stored logo. No new endpoint. The logo is at most 1 MB (about 1.4 MB as base64; typical logos are 10 to 100 KB), checked by content at upload, so the type is known. Recommended.
   2. A new endpoint `GET /public/reports/:token/logo` that streams the image (same 404 rules and headers), and `logo_url` points at it. Smaller JSON, cacheable per view, but a new endpoint.
   3. `logo_url: null` on public reports (no logo on shared pages).
-- Until decided, the server returns `brand.logo_url: null` on public reports, and `GET /public/reports/:token` stays `WIP` in STATUS.md.
 - Affects: `GET /public/reports/:token`, the client's public page.
-- Status: PROPOSED
+- Status: APPLIED (approved by the user 2026-11-16, option 1; applied by the server chat: the media type comes from the file's magic bytes, the logo is embedded only when the owner's plan allows branding and a logo exists, otherwise null; metadata is stripped)

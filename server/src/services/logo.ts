@@ -106,3 +106,76 @@ export function checkLogo(buf: Buffer): LogoCheck {
   if (width < LOGO_LIMITS.minSide || height < LOGO_LIMITS.minSide) return { ok: false, reason: 'too_small_dimensions' };
   return { ok: true, ext: kind.ext, contentType: kind.contentType, width, height };
 }
+
+// ---------- metadata ----------
+
+/** PNG chunks that can carry text, camera or editing data. Each chunk has its own CRC, so dropping one is safe. */
+const PNG_DROP = new Set(['tEXt', 'zTXt', 'iTXt', 'eXIf', 'tIME']);
+
+function stripPng(buf: Buffer): Buffer {
+  const parts: Buffer[] = [buf.subarray(0, 8)];
+  let at = 8;
+  while (at + 12 <= buf.length) {
+    const next = at + 12 + buf.readUInt32BE(at);
+    if (next > buf.length) return buf;
+    const type = ascii(buf, at + 4, at + 8);
+    if (!PNG_DROP.has(type)) parts.push(buf.subarray(at, next));
+    if (type === 'IEND') break;
+    at = next;
+  }
+  return Buffer.concat(parts);
+}
+
+/**
+ * JPEG: drops EXIF/XMP (APP1), APP3 to APP13 (IPTC, Photoshop, maker data), APP15 and comments, up to the start of
+ * the scan. Keeps APP0 (JFIF), APP2 (ICC colour profile) and APP14 (Adobe colour transform), which affect how it looks.
+ */
+function stripJpeg(buf: Buffer): Buffer {
+  const parts: Buffer[] = [buf.subarray(0, 2)];
+  let at = 2;
+  while (at + 4 <= buf.length) {
+    if (buf[at] !== 0xff) return buf;
+    const marker = buf[at + 1]!;
+    if (marker === 0xda) {
+      parts.push(buf.subarray(at));
+      return Buffer.concat(parts);
+    }
+    const end = at + 2 + buf.readUInt16BE(at + 2);
+    if (end > buf.length) return buf;
+    const drop = marker === 0xe1 || (marker >= 0xe3 && marker <= 0xed) || marker === 0xef || marker === 0xfe;
+    if (!drop) parts.push(buf.subarray(at, end));
+    at = end;
+  }
+  return buf;
+}
+
+/** WebP (extended format only): drops the EXIF and XMP chunks, clears their VP8X flags and fixes the RIFF size. */
+function stripWebp(buf: Buffer): Buffer {
+  if (ascii(buf, 12, 16) !== 'VP8X') return buf; // simple lossy or lossless files carry no metadata chunks
+  const chunks: Buffer[] = [];
+  let at = 12;
+  while (at + 8 <= buf.length) {
+    const size = buf.readUInt32LE(at + 4);
+    const end = at + 8 + size + (size % 2);
+    if (end > buf.length) return buf;
+    const type = ascii(buf, at, at + 4);
+    if (type !== 'EXIF' && type !== 'XMP ') chunks.push(Buffer.from(buf.subarray(at, end)));
+    at = end;
+  }
+  const vp8x = chunks[0]!;
+  vp8x[8] = vp8x[8]! & ~0x0c; // XMP (0x04) and EXIF (0x08) flags
+  const body = Buffer.concat(chunks);
+  const header = Buffer.from(buf.subarray(0, 12));
+  header.writeUInt32LE(body.length + 4, 4);
+  return Buffer.concat([header, body]);
+}
+
+/**
+ * The logo without metadata (EXIF, XMP, PNG text chunks, comments), for a file that passed checkLogo. Returns the
+ * input unchanged if its structure is not what the check accepted.
+ */
+export function stripLogoMetadata(buf: Buffer, ext: LogoExt): Buffer {
+  if (ext === 'png') return stripPng(buf);
+  if (ext === 'jpg') return stripJpeg(buf);
+  return stripWebp(buf);
+}

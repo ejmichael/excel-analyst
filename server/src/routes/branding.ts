@@ -6,7 +6,7 @@ import { logger } from '../lib/logger.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { buildBrand, LOGO_EXTENSIONS, logoPath, putLogo, removeLogos } from '../services/brand.js';
 import { assertWithinLimit } from '../services/limits.js';
-import { checkLogo, LOGO_LIMITS } from '../services/logo.js';
+import { checkLogo, LOGO_LIMITS, stripLogoMetadata } from '../services/logo.js';
 
 /**
  * POST /me/logo and DELETE /me/logo (slice S3). Both need limits.branding. The file type comes from the bytes only;
@@ -75,7 +75,8 @@ brandingRouter.post('/me/logo', async (req, res) => {
   if (!check.ok) throw REFUSED[check.reason];
 
   const path = logoPath(userId, check.ext);
-  await putLogo(path, file.buffer, check.contentType);
+  // Stored without EXIF, XMP or text chunks (they can hold a location, a name or editing history).
+  await putLogo(path, stripLogoMetadata(file.buffer, check.ext), check.contentType);
   const profile = await setLogoPath(userId, path);
   // A logo saved earlier with another extension is removed so only one logo exists per owner.
   await removeLogos(LOGO_EXTENSIONS.filter((e) => e !== check.ext).map((e) => logoPath(userId, e)));

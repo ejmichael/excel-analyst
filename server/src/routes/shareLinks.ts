@@ -5,7 +5,8 @@ import { logger } from '../lib/logger.js';
 import { supabaseAdmin, supabaseForUser } from '../lib/supabase.js';
 import { publicRateLimit } from '../middleware/rateLimit.js';
 import { requireUuidParam, validate } from '../middleware/validate.js';
-import { assertWithinLimit } from '../services/limits.js';
+import { logoDataUrl } from '../services/brand.js';
+import { assertWithinLimit, supabaseLimitsDataSource } from '../services/limits.js';
 import { buildReportDetail, getOwnReport } from '../services/reports.js';
 import {
   countView,
@@ -115,6 +116,21 @@ function setPublicHeaders(res: Response): void {
   for (const [k, v] of Object.entries(PUBLIC_HEADERS)) res.setHeader(k, v);
 }
 
+/**
+ * brand.logo_url on a public report: a data URL (a signed URL would name the owner id and storage path), only when the
+ * owner's plan allows branding and a logo exists; otherwise null.
+ */
+async function publicLogo(ownerId: string): Promise<string | null> {
+  const [plan, all, profile] = await Promise.all([
+    supabaseLimitsDataSource.getPlan(ownerId),
+    supabaseLimitsDataSource.getAllPlanLimits(),
+    supabaseAdmin().from('profiles').select('brand_logo_path').eq('id', ownerId).single<{ brand_logo_path: string | null }>(),
+  ]);
+  throwIfDbError('public: profile', profile.error);
+  if (!all.find((l) => l.plan === plan)?.branding) return null;
+  return logoDataUrl(profile.data!.brand_logo_path);
+}
+
 publicRouter.get('/public/reports/:token', publicRateLimit, async (req, res) => {
   setPublicHeaders(res);
   const token = req.params.token as string;
@@ -131,6 +147,5 @@ publicRouter.get('/public/reports/:token', publicRateLimit, async (req, res) => 
   }));
   await countView(link);
   logger.info({ share_link_id: link.id, blocks: detail.blocks.length }, 'public report viewed');
-  // brand.logo_url: see docs/CONTRACT_CHANGES.md 2026-11-16 "Logo on public reports" (PROPOSED); null until decided.
-  ok(res, toPublicReport(detail, link.show_working, null));
+  ok(res, toPublicReport(detail, link.show_working, await publicLogo(link.owner_id)));
 });

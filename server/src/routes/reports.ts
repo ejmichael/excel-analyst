@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { AppError, notFound, throwIfDbError } from '../lib/errors.js';
@@ -6,10 +7,11 @@ import { logger } from '../lib/logger.js';
 import { supabaseAdmin, supabaseForUser } from '../lib/supabase.js';
 import { parseOrThrow, requireUuidParam, validate, validQuery } from '../middleware/validate.js';
 import { env } from '../config/env.js';
+import { STORED_ROWS } from '../services/analysis/ask.js';
 import { todaySast } from '../services/dates.js';
 import { slugify } from '../services/downloadNames.js';
 import { assertWithinLimit, supabaseLimitsDataSource } from '../services/limits.js';
-import { buildReportXlsx, ExportTooLarge, MAX_CONCURRENT_EXPORTS } from '../services/reportXlsx.js';
+import { buildReportXlsx, cellCount, ExportTooLarge, MAX_CONCURRENT_EXPORTS, MAX_EXPORT_CELLS } from '../services/reportXlsx.js';
 import { Semaphore } from '../services/sandbox/semaphore.js';
 import {
   assertBlocksAllowed,
@@ -134,13 +136,36 @@ reportsRouter.delete('/reports/:id', requireUuidParam(), async (req, res) => {
 
 // ---------- GET /reports/:id/export.xlsx ----------
 
+const EXPORT_TOO_LARGE = 'This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again.';
+
+/** The workbook's cell count from row_count and the column list of each answer (no rows read). */
+async function reportCellEstimate(db: SupabaseClient, userId: string, reportId: string): Promise<number> {
+  const ids = (await getMembers(db, userId, reportId)).map((m) => m.block_id);
+  if (ids.length === 0) return cellCount([]);
+  const { data, error } = await db
+    .from('blocks')
+    .select('row_count, columns')
+    .eq('owner_id', userId)
+    .in('id', ids)
+    .returns<Array<{ row_count: number; columns: unknown[] }>>();
+  throwIfDbError('reports: export size', error);
+  return cellCount((data ?? []).map((b) => ({ rows: Math.min(b.row_count, STORED_ROWS), columns: b.columns.length })));
+}
+
 // Workbooks are built in memory: at most MAX_CONCURRENT_EXPORTS at a time, waiting up to 20 s for a slot.
 const exportSlots = new Semaphore(MAX_CONCURRENT_EXPORTS);
 
 reportsRouter.get('/reports/:id/export.xlsx', requireUuidParam(), async (req, res) => {
   const { userId, token } = authOf(req);
   const db = supabaseForUser(token);
-  const detail = await buildReportDetail(db, userId, await getOwnReport(db, userId, req.params.id as string));
+  const report = await getOwnReport(db, userId, req.params.id as string);
+  // Size check from the answers' row counts and column lists, before any rows are loaded.
+  const cells = await reportCellEstimate(db, userId, report.id);
+  if (cells > MAX_EXPORT_CELLS) {
+    logger.warn({ report_id: report.id, cells }, 'export too large');
+    throw new AppError('internal', EXPORT_TOO_LARGE);
+  }
+  const detail = await buildReportDetail(db, userId, report);
   const [plan, allLimits] = await Promise.all([supabaseLimitsDataSource.getPlan(userId), supabaseLimitsDataSource.getAllPlanLimits()]);
   const branding = allLimits.find((l) => l.plan === plan)?.branding ?? false;
 
@@ -153,7 +178,7 @@ reportsRouter.get('/reports/:id/export.xlsx', requireUuidParam(), async (req, re
   } catch (err) {
     if (err instanceof ExportTooLarge) {
       logger.warn({ report_id: detail.id, cells: err.cells }, 'export too large');
-      throw new AppError('internal', 'This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again.');
+      throw new AppError('internal', EXPORT_TOO_LARGE);
     }
     throw err;
   } finally {

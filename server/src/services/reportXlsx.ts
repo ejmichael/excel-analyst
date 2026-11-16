@@ -139,9 +139,12 @@ function checkLine(c: BlockCheck): Row {
 }
 
 /** Rows times columns over every answer table, plus the fixed lines: what the size cap is checked against. */
-export function exportCellCount(detail: ReportDetail): number {
-  return detail.blocks.reduce((n, rb) => n + (rb.block.rows.length + 1) * Math.max(1, rb.block.columns.length) + 8, 20);
+export function cellCount(tables: Array<{ rows: number; columns: number }>): number {
+  return tables.reduce((n, t) => n + (t.rows + 1) * Math.max(1, t.columns) + 8, 20);
 }
+
+export const exportCellCount = (detail: ReportDetail) =>
+  cellCount(detail.blocks.map((rb) => ({ rows: rb.block.rows.length, columns: rb.block.columns.length })));
 
 const widthFor = (values: string[]) => Math.min(60, Math.max(10, ...values.map((v) => v.length + 2)));
 

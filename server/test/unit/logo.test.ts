@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
+import { crc32 } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { checkLogo, LOGO_LIMITS } from '../../src/services/logo.js';
+import { checkLogo, LOGO_LIMITS, stripLogoMetadata } from '../../src/services/logo.js';
 
 // Real images made with ffmpeg (test/unit/logos/): 64 x 48 PNG, JPEG and WebP (lossy VP8 and lossless VP8L), a GIF,
 // a 4001 x 20 PNG and an 8 x 8 PNG.
@@ -76,5 +77,87 @@ describe('logo byte check: refused', () => {
   it('empty or tiny input', () => {
     expect(checkLogo(Buffer.alloc(0))).toEqual({ ok: false, reason: 'unsupported' });
     expect(checkLogo(Buffer.from([0x89, 0x50]))).toEqual({ ok: false, reason: 'unsupported' });
+  });
+});
+
+describe('logo metadata is stripped', () => {
+  const SECRET = 'GPS -26.2041 28.0473 Thandi Nkosi iPhone';
+
+  function pngChunk(type: string, data: Buffer): Buffer {
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), 8 + data.length);
+    return out;
+  }
+
+  it('PNG: tEXt, iTXt, zTXt, eXIf and tIME chunks go; the image chunks stay byte for byte', () => {
+    const src = logo('logo.png');
+    const ihdrEnd = 8 + 12 + 13;
+    const extra = Buffer.concat([
+      pngChunk('tEXt', Buffer.from(`Author\0${SECRET}`)),
+      pngChunk('iTXt', Buffer.from(`XML:com.adobe.xmp\0\0\0\0\0${SECRET}`)),
+      pngChunk('eXIf', Buffer.from(`MM\0*${SECRET}`)),
+      pngChunk('tIME', Buffer.from([7, 234, 11, 16, 10, 0, 0])),
+    ]);
+    const dirty = Buffer.concat([src.subarray(0, ihdrEnd), extra, src.subarray(ihdrEnd)]);
+    expect(checkLogo(dirty)).toMatchObject({ ok: true, ext: 'png', width: 64, height: 48 });
+    const clean = stripLogoMetadata(dirty, 'png');
+    expect(clean.toString('latin1')).not.toContain('Thandi');
+    expect(clean.equals(src)).toBe(true);
+  });
+
+  it('JPEG: EXIF/XMP (APP1), IPTC (APP13) and comments go; JFIF and the image stay', () => {
+    const src = logo('logo.jpg');
+    const segment = (marker: number, data: Buffer) => {
+      const head = Buffer.from([0xff, marker, 0, 0]);
+      head.writeUInt16BE(data.length + 2, 2);
+      return Buffer.concat([head, data]);
+    };
+    const dirty = Buffer.concat([
+      src.subarray(0, 2),
+      segment(0xe1, Buffer.from(`Exif\0\0${SECRET}`)),
+      segment(0xed, Buffer.from(`Photoshop 3.0\0${SECRET}`)),
+      segment(0xfe, Buffer.from(SECRET)),
+      src.subarray(2),
+    ]);
+    expect(checkLogo(dirty)).toMatchObject({ ok: true, ext: 'jpg', width: 64, height: 48 });
+    const clean = stripLogoMetadata(dirty, 'jpg');
+    expect(clean.toString('latin1')).not.toContain('Thandi');
+    expect(checkLogo(clean)).toMatchObject({ ok: true, ext: 'jpg', width: 64, height: 48 });
+    expect(clean.length).toBeLessThanOrEqual(src.length);
+  });
+
+  it('WebP (extended): EXIF and XMP chunks go, their flags are cleared and the RIFF size is fixed', () => {
+    const vp8 = logo('logo-lossy.webp').subarray(12); // the VP8 chunk of a simple lossy file
+    const chunk = (type: string, data: Buffer) => {
+      const head = Buffer.alloc(8);
+      head.write(type, 0, 'latin1');
+      head.writeUInt32LE(data.length, 4);
+      return Buffer.concat([head, data, data.length % 2 ? Buffer.alloc(1) : Buffer.alloc(0)]);
+    };
+    const vp8xData = Buffer.alloc(10);
+    vp8xData[0] = 0x0c; // EXIF and XMP present
+    vp8xData.writeUIntLE(63, 4, 3);
+    vp8xData.writeUIntLE(47, 7, 3);
+    const body = Buffer.concat([chunk('VP8X', vp8xData), vp8, chunk('EXIF', Buffer.from(`MM\0*${SECRET}`)), chunk('XMP ', Buffer.from(`<x>${SECRET}</x>`))]);
+    const header = Buffer.from('RIFF0000WEBP', 'latin1');
+    header.writeUInt32LE(body.length + 4, 4);
+    const dirty = Buffer.concat([header, body]);
+    expect(checkLogo(dirty)).toMatchObject({ ok: true, ext: 'webp', width: 64, height: 48 });
+
+    const clean = stripLogoMetadata(dirty, 'webp');
+    expect(clean.toString('latin1')).not.toContain('Thandi');
+    expect(clean.readUInt32LE(4)).toBe(clean.length - 8);
+    expect(clean[20]! & 0x0c).toBe(0);
+    expect(checkLogo(clean)).toMatchObject({ ok: true, ext: 'webp', width: 64, height: 48 });
+    expect(clean.includes(vp8)).toBe(true);
+  });
+
+  it('files without metadata come back unchanged', () => {
+    for (const [name, ext] of [['logo.png', 'png'], ['logo-lossless.webp', 'webp']] as const) {
+      expect(stripLogoMetadata(logo(name), ext).equals(logo(name))).toBe(true);
+    }
   });
 });

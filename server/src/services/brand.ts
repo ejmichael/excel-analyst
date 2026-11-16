@@ -3,6 +3,7 @@ import { StorageError } from '../lib/storage.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { logger } from '../lib/logger.js';
 import type { Brand, Plan } from '../types/api.js';
+import { checkLogo, stripLogoMetadata } from './logo.js';
 
 /**
  * Branding (business name, colour, logo). The logo lives in the private `branding` bucket at `<owner_id>/logo.<ext>`;
@@ -52,4 +53,25 @@ export async function removeLogos(paths: string[]): Promise<void> {
   if (paths.length === 0) return;
   const { error } = await bucket().remove(paths);
   if (error) throw new StorageError('logo remove');
+}
+
+/**
+ * The logo as a data URL for public reports, where a signed URL would reveal the owner id and storage path.
+ * The media type comes from the file's bytes (checkLogo), never from the path; metadata is stripped (logos uploaded
+ * before stripping existed still carry it in storage). Null when there is no logo or the stored file fails the check.
+ */
+export async function logoDataUrl(path: string | null): Promise<string | null> {
+  if (!path) return null;
+  const { data, error } = await bucket().download(path);
+  if (error || !data) {
+    logger.warn({ op: 'logo download' }, 'logo could not be read');
+    return null;
+  }
+  const buf = Buffer.from(await data.arrayBuffer());
+  const check = checkLogo(buf);
+  if (!check.ok) {
+    logger.warn({ op: 'logo check', reason: check.reason }, 'stored logo failed the check');
+    return null;
+  }
+  return `data:${check.contentType};base64,${stripLogoMetadata(buf, check.ext).toString('base64')}`;
 }

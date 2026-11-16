@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { bearer, createTestUser, deleteTestUsers, setPlan, type TestUser } from './helpers.js';
@@ -54,6 +55,7 @@ vi.mock('../../src/llm/client.js', async (importOriginal) => {
 const app = createApp();
 const api = (p: string) => `/api/v1${p}`;
 const ITEMS = Buffer.from('Item,Amount\n=SUM(A1:A9),5.00\nCoffee,6.50\nCake,7.25\n');
+const LOGO = readFileSync(new URL('../unit/logos/logo.png', import.meta.url));
 const PEOPLE = Buffer.from('Email,Amount\nthandi@example.com,5.00\nsipho@example.com,6.50\n');
 
 let a: TestUser; // practice: export, share links
@@ -169,35 +171,57 @@ describe('GET /reports/:id/export.xlsx', () => {
     expect(await events(b, 'export')).toBe(before);
   });
 
-  it('a report too large to build fails with a clear message and counts nothing', async () => {
-    // One answer of 500 rows x 600 columns: above the 300 000-cell cap. Inserted directly (no model can produce it).
-    const columns = Array.from({ length: 600 }, (_, i) => ({ name: `c${i}`, format: 'integer' }));
-    const row = Object.fromEntries(columns.map((c) => [c.name, 1]));
-    const { data: big, error } = await supabaseAdmin()
-      .from('blocks')
-      .insert({
-        owner_id: a.id,
-        dataset_id: datasetsA[0],
-        question: 'big',
-        title: 'Big',
-        sql: 'SELECT 1',
-        columns,
-        rows: Array.from({ length: 500 }, () => row),
-        row_count: 500,
-        chart: { type: 'table', x: null, y: [], series: null, orientation: 'vertical', stacked: false, value_format: {} },
-        narrative_template: 'x',
-        narrative: 'x',
-      })
-      .select('id')
-      .single<{ id: string }>();
-    // Failed once under load in a full run (2026-11-16) without a recorded cause: say why if it happens again.
-    expect(error, `insert: ${error?.code} ${error?.message}`).toBeNull();
-    const bigReport = await makeReport(a, wsA, 'Big', [big!.id]);
+  it('a report too large to build is refused before any rows are read, with a clear message, and counts nothing', async () => {
+    // 30 answers of 500 rows x 20 columns (the most a report can hold, at a width a real query can return):
+    // 300 860 cells, just above the 300 000 cap. Inserted directly, one modest row per statement (about 100 KB each).
+    // 2026-11-16: an earlier version inserted one 3 MB answer and hit Supabase's statement timeout (57014) under load.
+    const columns = Array.from({ length: 20 }, (_, i) => ({ name: `c${i}`, format: 'integer' }));
+    const rows = Array.from({ length: 500 }, (_, r) => Object.fromEntries(columns.map((c, i) => [c.name, r * 20 + i])));
+    const ids: string[] = [];
+    for (let batch = 0; batch < 6; batch++) {
+      const inserted = await Promise.all(
+        Array.from({ length: 5 }, async (_, k) => {
+          const { data, error } = await supabaseAdmin()
+            .from('blocks')
+            .insert({
+              owner_id: a.id,
+              dataset_id: datasetsA[0],
+              question: 'wide',
+              title: `Wide ${batch * 5 + k + 1}`,
+              sql: 'SELECT 1',
+              columns,
+              rows,
+              row_count: 500,
+              chart: { type: 'table', x: null, y: [], series: null, orientation: 'vertical', stacked: false, value_format: {} },
+              narrative_template: 'x',
+              narrative: 'x',
+            })
+            .select('id')
+            .single<{ id: string }>();
+          expect(error, `insert: ${error?.code} ${error?.message}`).toBeNull();
+          return data!.id;
+        }),
+      );
+      ids.push(...inserted);
+    }
+    // The report is made with the same SQL function POST /reports uses, so creating it reads no rows back.
+    const { data: reportId, error } = await supabaseAdmin().rpc('create_report_with_blocks', {
+      p_owner_id: a.id,
+      p_workspace_id: wsA,
+      p_title: 'Wide',
+      p_subtitle: null,
+      p_period_label: null,
+      p_block_ids: ids,
+    });
+    expect(error, `create: ${error?.code} ${error?.message}`).toBeNull();
     const before = await events(a, 'export');
-    const res = await request(app).get(api(`/reports/${bigReport.id}/export.xlsx`)).set(bearer(a));
+    const started = Date.now();
+    const res = await request(app).get(api(`/reports/${reportId as string}/export.xlsx`)).set(bearer(a));
     expect(res.status, res.text).toBe(500);
     expect(res.body.error).toEqual({ code: 'internal', message: 'This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again.' });
     expect(await events(a, 'export')).toBe(before);
+    // Refused from the row counts and column lists alone: well under the time a 3 MB read and a workbook build take.
+    expect(Date.now() - started).toBeLessThan(5_000);
   }, 60_000);
 });
 
@@ -302,8 +326,14 @@ describe('GET /public/reports/:token', () => {
   });
 
   it('leaks nothing: no owner id or email, workspace or dataset id, file name or storage path anywhere in the JSON', async () => {
+    // With a logo: it must arrive as a data URL, never as a signed URL (which would name the owner id and storage path).
+    await request(app).post(api('/me/logo')).set(bearer(a)).attach('file', LOGO, 'my-logo-file.jpg').expect(200);
     const link = (await createLink(a, piiReport.id, { show_working: true })).body.data as ShareLink;
     const res = await publicGet(link.token).expect(200);
+    const logoUrl = (res.body.data as PublicReport).brand.logo_url!;
+    // The type comes from the bytes (a PNG named .jpg), and the image is the uploaded one.
+    expect(logoUrl.startsWith('data:image/png;base64,')).toBe(true);
+    expect(Buffer.from(logoUrl.slice('data:image/png;base64,'.length), 'base64').equals(LOGO)).toBe(true);
     const { data: datasets } = await supabaseAdmin().from('datasets').select('id, original_filename, storage_path, normalised_path').eq('owner_id', a.id);
     const forbidden = [
       a.id,
@@ -311,6 +341,10 @@ describe('GET /public/reports/:token', () => {
       wsA,
       ...(datasets ?? []).flatMap((d) => [d.id, d.original_filename, d.storage_path, d.normalised_path].filter((v): v is string => typeof v === 'string')),
       'storage/v1',
+      'branding/',
+      'logo.png',
+      'my-logo-file',
+      'token=',
       'owner_id',
       'workspace_id',
       'dataset_id',
@@ -333,6 +367,17 @@ describe('GET /public/reports/:token', () => {
     walk(res.body);
     for (const f of forbidden) expect(seen.filter((s) => s.includes(f))).toEqual([]);
     expect(res.text).not.toContain(a.id);
+  });
+
+  it('the logo is null when the owner’s plan no longer allows branding', async () => {
+    const link = (await createLink(a, reportA.id)).body.data as ShareLink;
+    await setPlan(a.id, 'free');
+    try {
+      expect(((await publicGet(link.token).expect(200)).body.data as PublicReport).brand.logo_url).toBeNull();
+    } finally {
+      await setPlan(a.id, 'practice');
+    }
+    expect(((await publicGet(link.token).expect(200)).body.data as PublicReport).brand.logo_url).toMatch(/^data:image\/png;base64,/);
   });
 
   it('ignores any Authorization header (another user’s or a broken one)', async () => {
