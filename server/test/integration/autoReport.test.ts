@@ -228,7 +228,23 @@ describe('the auto-report job', () => {
     await autoReportsIdle();
   });
 
-  it('the dataset deleted mid-run: the run stops and fails with "The file was deleted."', async () => {
+  it('two simultaneous requests for the same dataset: exactly one 202, the other 409 naming the accepted run', async () => {
+    await setSuggestions(dsA, ['SLOW OK one', 'SLOW OK two', 'SLOW OK three']);
+    const runsBefore = await count('auto_report_runs', { owner_id: a.id, dataset_id: dsA });
+    const responses = await Promise.all([start(a, dsA), start(a, dsA)]);
+    const accepted = responses.filter((r) => r.status === 202);
+    const refused = responses.filter((r) => r.status === 409);
+    expect(accepted).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    const run = accepted[0]!.body.data as AutoReportRun;
+    expect(refused[0]!.body.error).toMatchObject({ code: 'conflict', details: { auto_report_id: run.id } });
+    // Only one run row was written for the two requests.
+    expect(await count('auto_report_runs', { owner_id: a.id, dataset_id: dsA })).toBe(runsBefore + 1);
+    await autoReportsIdle();
+    expect((await getRun(a, run.id)).status).toBe('done');
+  });
+
+  it('the dataset deleted mid-run:the run stops and fails with "The file was deleted."', async () => {
     await setSuggestions(dsGone, ['SLOW OK one', 'SLOW OK two', 'SLOW OK three', 'SLOW OK four', 'SLOW OK five', 'SLOW OK six']);
     const run = (await start(a, dsGone).expect(202)).body.data as AutoReportRun;
     await new Promise((r) => setTimeout(r, 300));
