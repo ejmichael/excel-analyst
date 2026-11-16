@@ -88,3 +88,10 @@ Entry format:
 - Proposed shape: add to the `POST /me/logo` row: "a damaged image is 415 `file_unsupported`"; add to the `POST /reports` row: "a missing or malformed `workspace_id` is 422 before the 404 and 402 checks".
 - Affects: `POST /me/logo`, `POST /reports`.
 - Status: APPLIED (approved by the user 2026-11-13; added to API_CONTRACT.md by the server chat)
+
+## 2026-11-16: Say which run is already building on 409 `conflict` (from: client)
+- What: `POST /datasets/:id/auto-report` answers 409 `conflict` when another auto-report for the dataset is `running`, with no `details`. Nothing else returns the running run's id (there is no list of a dataset's runs).
+- Why: Part 4b asks the client to show the running build's progress on that 409. The client can only do so when this browser tab started the run (it remembers the id in sessionStorage). From another tab, another device, or after the tab was closed, it can only say that a build is running; it cannot show the progress or open the draft when it is done.
+- Proposed shape: on that 409 only, `details: { run: AutoReportRun }` (or the smaller `{ run_id: ID }`), so the client can poll `GET /auto-reports/:id` as usual. No new endpoint; other 409 `conflict` responses are unchanged.
+- Affects: `POST /datasets/:id/auto-report` (API_CONTRACT Flow B2 and the endpoint row), `api-types.ts` (a small `AutoReportConflictDetails` type), client Part 4b. Until then the client shows: "Analyst is already building a report from this file. It will appear in your reports when it is done."
+- Status: PROPOSED

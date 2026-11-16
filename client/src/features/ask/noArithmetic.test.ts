@@ -21,6 +21,10 @@ const ANSWER_FILES = [
   '../reports/ReportsPage.tsx',
   '../reports/ReportTray.tsx',
   '../reports/AddAnswersDialog.tsx',
+  // "Build my report" and its draft banner (Part 4b): counting statuses is fine, computing figures is not.
+  '../reports/DraftBanner.tsx',
+  '../autoReport/BuildReportSection.tsx',
+  '../autoReport/BuildReportDialog.tsx',
 ];
 
 const FORBIDDEN: Array<[RegExp, string]> = [
