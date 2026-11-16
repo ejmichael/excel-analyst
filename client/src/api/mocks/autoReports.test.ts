@@ -44,8 +44,10 @@ describe('mock "Build my report" (Flow B2)', () => {
 
     vi.setSystemTime(Date.now() + MOCK_AUTO_STEP_MS * 2 + 1);
     expect(await getAutoReport(run.id)).toMatchObject({ status: 'running', blocks_done: 2 });
-    // One already running for this file: 409.
-    expect((await caught(startAutoReport(datasetId, {})))?.code).toBe('conflict');
+    // One already running for this file: 409 naming it.
+    const conflict = await caught(startAutoReport(datasetId, {}));
+    expect(conflict?.code).toBe('conflict');
+    expect(conflict?.details).toEqual({ auto_report_id: run.id });
 
     vi.setSystemTime(Date.now() + MOCK_AUTO_STEP_MS * 3);
     const done = await getAutoReport(run.id);
@@ -65,7 +67,14 @@ describe('mock "Build my report" (Flow B2)', () => {
     expect(failed).toMatchObject({ status: 'failed', report_id: null });
     expect(failed.error_message).toMatch(/We could only answer 2 of the 5 questions/);
 
-    expect((await caught(startAutoReport(datasetId, { title: 'busy' })))?.status).toBe(409);
+    // "busy": a run started as if from another tab, and the 409 names it (AutoReportConflictDetails).
+    const busy = await caught(startAutoReport(datasetId, { title: 'busy' }));
+    expect(busy?.status).toBe(409);
+    const busyId = (busy?.details as { auto_report_id: string }).auto_report_id;
+    expect(await getAutoReport(busyId)).toMatchObject({ id: busyId, status: 'running' });
+    vi.setSystemTime(Date.now() + MOCK_AUTO_STEP_MS * 5 + 1);
+    expect((await getAutoReport(busyId)).status).toBe('done');
+
     const limit = await caught(startAutoReport(datasetId, { title: 'limit' }));
     expect(limit?.status).toBe(402);
     expect(limit?.planLimit?.limit_key).toBe('max_questions_per_month');

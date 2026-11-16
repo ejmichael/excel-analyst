@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { AutoReportRun, PlanLimitDetails } from '../types';
+import type { AutoReportConflictDetails, AutoReportRun, PlanLimitDetails } from '../types';
 import { MOCK_PLAN_LIMITS, cheapestPlanAllowing, sastTimestamp, type MockAutoReportRun, type MockUser } from './data';
 import { blockFrom, templateForQuestion } from './blockFixtures';
 import { questionsThisMonth } from './blocks';
@@ -9,7 +9,7 @@ import { addReport, reportsThisMonth } from './reports';
 /**
  * Mock "Build my report" (Flow B2). A run answers one suggestion every 2 seconds (about 10 s for five), then makes
  * the report. The title picks a variant (documented in client/README.md): "fail" ends failed after two answers,
- * "busy" is 409 (one already running), "limit" is 402 on the monthly questions, "slow" takes 3 minutes.
+ * "busy" starts a run but answers 409 naming it (as if another tab had started it), "limit" is 402 on the monthly questions, "slow" takes 3 minutes.
  */
 
 export const MOCK_AUTO_STEP_MS = 2000;
@@ -30,6 +30,12 @@ const requestSchema = z.strictObject({
   title: z.string().trim().min(1).max(120).optional(),
   period_label: z.string().trim().max(60).optional(),
 });
+
+/** 409 conflict naming the running run, like the server (AutoReportConflictDetails). */
+function alreadyRunning(runId: string): Result {
+  const details: AutoReportConflictDetails = { auto_report_id: runId };
+  return fail(409, 'conflict', 'A report is already being built for this file. Please wait for it to finish.', details);
+}
 
 function runsOf(user: MockUser): MockAutoReportRun[] {
   user.auto_report_runs ??= [];
@@ -100,9 +106,8 @@ export function routeAutoReports(method: string, path: string, user: MockUser, b
     const title = parsed.data.title ?? dataset.name;
     const runs = runsOf(user);
     runs.forEach((r) => settle(user, r));
-    if (/busy/i.test(title) || runs.some((r) => r.run.dataset_id === dataset.id && r.run.status === 'running')) {
-      return fail(409, 'conflict', 'A report is already being built for this file. Please wait for it to finish.');
-    }
+    const running = runs.find((r) => r.run.dataset_id === dataset.id && r.run.status === 'running');
+    if (running) return alreadyRunning(running.run.id);
     const needed = dataset.suggestions.length;
     const limits = MOCK_PLAN_LIMITS[user.plan];
     const usedQuestions = /limit/i.test(title) ? limits.max_questions_per_month : questionsThisMonth(user);
@@ -145,6 +150,8 @@ export function routeAutoReports(method: string, path: string, user: MockUser, b
       title,
       period_label: parsed.data.period_label || null,
     });
+    // "busy": as if another tab had just started it, this request is told which run is already running.
+    if (/busy/i.test(title)) return alreadyRunning(run.id);
     return ok({ ...run }, 202);
   }
 

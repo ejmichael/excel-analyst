@@ -23,15 +23,20 @@ export function nextAutoReportPoll(status: AutoReportRun['status'] | undefined, 
  * stops intervals with no observers). `isSlow` turns true 3 minutes after the run started.
  */
 export function useAutoReportRun(id: ID, startedAt: number) {
+  // A run followed from a 409 may have started earlier, in another tab: count from whichever is earlier.
+  const since = (run: AutoReportRun | undefined) => {
+    const created = run ? Date.parse(run.created_at) : NaN;
+    return Number.isNaN(created) ? startedAt : Math.min(startedAt, created);
+  };
   const query = useQuery({
     queryKey: autoReportKey(id),
     queryFn: ({ signal }) => getAutoReport(id, signal),
-    refetchInterval: (q) => nextAutoReportPoll(q.state.data?.status, Date.now() - startedAt),
+    refetchInterval: (q) => nextAutoReportPoll(q.state.data?.status, Date.now() - since(q.state.data)),
     // A 404 means the run is gone; no point asking again.
     retry: false,
   });
   // dataUpdatedAt changes on every poll, so isSlow updates even when the data is unchanged.
-  const isSlow = query.data?.status === 'running' && query.dataUpdatedAt - startedAt >= AUTO_SLOW_AFTER_MS;
+  const isSlow = query.data?.status === 'running' && query.dataUpdatedAt - since(query.data) >= AUTO_SLOW_AFTER_MS;
   return { ...query, isSlow };
 }
 

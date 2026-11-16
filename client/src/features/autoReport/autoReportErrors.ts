@@ -1,10 +1,11 @@
 import { errorMessage, isApiError } from '@/api/client';
-import type { PlanLimitDetails } from '@/api/types';
+import type { AutoReportConflictDetails, ID, PlanLimitDetails } from '@/api/types';
 import { describeAskError } from '@/features/ask/askErrors';
 
 /** How a failed "Build my report" start is shown. Every case is written out in words. */
 export type StartErrorView =
   | { kind: 'plan_limit'; details: PlanLimitDetails }
+  | { kind: 'running'; runId: ID }
   | { kind: 'fields'; title?: string; period_label?: string }
   | { kind: 'message'; message: string; offerAsk?: boolean };
 
@@ -18,8 +19,11 @@ export function describeStartError(error: unknown, dataset: { expires_at: string
   switch (error.code) {
     case 'plan_limit':
       return error.planLimit ? { kind: 'plan_limit', details: error.planLimit } : { kind: 'message', message: errorMessage(error) };
-    case 'conflict':
-      return { kind: 'message', message: ALREADY_RUNNING };
+    case 'conflict': {
+      // The server names the build already running for this file (AutoReportConflictDetails): show its progress.
+      const runId = (error.details as Partial<AutoReportConflictDetails> | undefined)?.auto_report_id;
+      return typeof runId === 'string' ? { kind: 'running', runId } : { kind: 'message', message: ALREADY_RUNNING };
+    }
     case 'dataset_not_ready':
     case 'dataset_expired': {
       // Same words as asking a question (Part 2).

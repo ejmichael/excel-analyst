@@ -55,7 +55,8 @@ const run = (over: Partial<AutoReportRun> = {}): AutoReportRun => ({
   blocks_total: 5,
   report_id: null,
   error_message: null,
-  created_at: '2026-11-16T10:00:00+02:00',
+  // Just started, so the 3-minute notice counts from now.
+  created_at: new Date().toISOString(),
   ...over,
 });
 
@@ -163,7 +164,32 @@ describe('Build my report: the dialog', () => {
     expect(screen.getByText('The Solo plan includes more.')).toBeInTheDocument();
   });
 
+  it('409 conflict naming the running build (another tab) shows that run’s progress and opens its draft when done', async () => {
+    let polls = 0;
+    const { calls } = setup((path, init) => {
+      if (path === '/datasets/d1/auto-report' && init.method === 'POST') {
+        return json(409, { error: { code: 'conflict', message: 'x', details: { auto_report_id: 'run-other' } } });
+      }
+      if (path === '/auto-reports/run-other') {
+        polls += 1;
+        return json(200, { data: polls < 2 ? run({ id: 'run-other', blocks_done: 2 }) : run({ id: 'run-other', status: 'done', blocks_done: 5, report_id: 'r7' }) });
+      }
+      return null;
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Build my report' }));
+    await userEvent.type(within(screen.getByRole('dialog')).getByRole('textbox', { name: 'Period (optional)' }), 'October 2026');
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Start' }));
+    expect(await screen.findByText('Answering question 3 of 5')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText(ALREADY_RUNNING)).not.toBeInTheDocument();
+    // Remembered for this file, so coming back shows it too.
+    expect(runStore.get('d1')).toMatchObject({ run_id: 'run-other', request: { period_label: 'October 2026' } });
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/reports/r7?draft=1'));
+    expect(calls.some((c) => c.path === '/auto-reports/run-other')).toBe(true);
+  });
+
   it.each([
+    // Without details (an older server) it can only say so.
     [409, 'conflict', ALREADY_RUNNING],
     [409, 'dataset_not_ready', 'This file is not ready for questions yet. Open the file to see how it is going.'],
     [410, 'dataset_expired', 'The original file was deleted on 16 December 2026. You can still read your earlier answers.'],
@@ -239,6 +265,28 @@ describe('Build my report: progress', () => {
     expect(await screen.findByText('Answering question 2 of 5')).toBeInTheDocument();
     expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ title: 'October' });
     expect(runStore.get('d1')?.run_id).toBe('run2');
+  });
+
+  it('Try again follows the run a 409 names instead of showing an error', async () => {
+    remember();
+    setup((path, init) => {
+      if (path === '/auto-reports/run1') return json(200, { data: run({ status: 'failed', blocks_done: 5, error_message: 'Interrupted by a restart. Please try again.' }) });
+      if (path === '/datasets/d1/auto-report' && init.method === 'POST') {
+        return json(409, { error: { code: 'conflict', message: 'x', details: { auto_report_id: 'run-other' } } });
+      }
+      if (path === '/auto-reports/run-other') return json(200, { data: run({ id: 'run-other', blocks_done: 4 }) });
+      return null;
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Answering question 5 of 5')).toBeInTheDocument();
+    expect(runStore.get('d1')?.run_id).toBe('run-other');
+  });
+
+  it('a followed run that started over 3 minutes ago (by its created_at) says it is taking longer', async () => {
+    remember();
+    const started = new Date(Date.now() - AUTO_SLOW_AFTER_MS - 1000).toISOString();
+    setup((path) => (path === '/auto-reports/run1' ? json(200, { data: run({ blocks_done: 3, created_at: started }) }) : null));
+    expect(await screen.findByText(SLOW_MESSAGE)).toBeInTheDocument();
   });
 
   it('stops polling when the page is left', async () => {

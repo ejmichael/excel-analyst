@@ -16,6 +16,7 @@ import {
 import { PERIOD_MAX, TITLE_MAX } from '@/features/reports/CreateReportDialog';
 import { describeStartError } from './autoReportErrors';
 import { useStartAutoReport } from './queries';
+import { runStore } from './runStore';
 
 interface Fields {
   title: string;
@@ -67,12 +68,18 @@ export function BuildReportDialog({ open, dataset, onClose }: BuildReportDialogP
     setErrors(problems);
     setMessage(null);
     if (Object.keys(problems).length > 0) return;
-    start.mutate(autoReportRequest(values), {
+    const request = autoReportRequest(values);
+    start.mutate(request, {
       // The dataset page now shows the progress in place of the button.
       onSuccess: onClose,
       onError: (error) => {
         const view = describeStartError(error, dataset);
         if (view.kind === 'plan_limit') return setPlanLimit(view.details);
+        if (view.kind === 'running') {
+          // A build for this file is already running (started in another tab or device): show its progress.
+          runStore.follow(dataset.id, view.runId, request);
+          return onClose();
+        }
         if (view.kind === 'fields') return setErrors({ title: view.title, period_label: view.period_label });
         setMessage({ text: view.message, offerAsk: view.offerAsk });
       },

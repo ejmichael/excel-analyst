@@ -52,6 +52,8 @@ function write(datasetId: ID, run: StoredRun | null): void {
 export const runStore = {
   get: read,
   set: (datasetId: ID, run: StoredRun) => write(datasetId, run),
+  /** Follow a run this tab did not start (a 409 named it): the page then shows its progress. */
+  follow: (datasetId: ID, runId: ID, request: AutoReportRequest) => write(datasetId, { run_id: runId, request, started_at: Date.now() }),
   clear: (datasetId: ID) => write(datasetId, null),
   subscribe(listener: () => void): () => void {
     listeners.add(listener);

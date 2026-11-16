@@ -19,7 +19,8 @@ npm run build
   that fixture's profile. On the Ask page, mock answers are example data (card-sales themed); questions containing
   "slow" (about 8 s), "weather" (422 cannot_answer), "busy" (429) or "fail" (502) show the waiting state and errors.
   "Build my report" answers one suggestion every 2 seconds (about 10 s), then opens the draft report; on the card-sales
-  file one answer is flagged. A title containing "fail" ends failed after two answers, "busy" is 409 (already running),
+  file one answer is flagged. A title containing "fail" ends failed after two answers, "busy" is 409 naming a run started
+  as if from another tab (the page then shows its progress),
   "limit" is 402 on the monthly questions, and "slow" takes 3 minutes.
 - `VITE_USE_MOCKS=false` uses Supabase Auth (publishable key in `VITE_SUPABASE_ANON_KEY`) and the API at `VITE_API_URL`.
   Supabase is used for auth only; all data goes through the API.

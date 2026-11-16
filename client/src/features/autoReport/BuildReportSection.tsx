@@ -140,6 +140,8 @@ function FailedPanel({ dataset, run, stored }: { dataset: DatasetDetail; run: Au
       onError: (error) => {
         const view = describeStartError(error, dataset);
         if (view.kind === 'plan_limit') return setPlanLimit(view.details);
+        // Someone already started it again (another tab): follow that run instead.
+        if (view.kind === 'running') return runStore.follow(dataset.id, view.runId, stored.request);
         setMessage(view.kind === 'message' ? view.message : errorMessage(error));
       },
     });
