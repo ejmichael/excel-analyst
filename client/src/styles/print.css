@@ -104,12 +104,21 @@
     font-size: 8.5pt;
   }
 
+  /* Text wraps between words (a word breaks only if it cannot fit); amounts stay on one line. */
   [data-print-table] th,
   [data-print-table] td {
     white-space: normal !important;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow-wrap: break-word;
     padding: 0.2rem 0.35rem !important;
+  }
+
+  [data-print-table] td[data-numeric] {
+    white-space: nowrap !important;
+  }
+
+  /* Wide tables (8 columns or more) print smaller, so every column fits the page. */
+  [data-print-table] table:has(thead th:nth-child(8)) {
+    font-size: 7.5pt;
   }
 
   [data-print-table] thead {

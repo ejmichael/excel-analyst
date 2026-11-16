@@ -40,7 +40,12 @@ export function ResultTable({ columns, rows, label, caption }: ResultTableProps)
             {rows.map((row, i) => (
               <tr key={i} className="border-b last:border-b-0">
                 {columns.map((c) => (
-                  <td key={c.name} className={cn('px-3 py-2 whitespace-nowrap', RIGHT_ALIGNED.has(c.format) && 'text-right')}>
+                  <td
+                    key={c.name}
+                    // Printed on one line: an amount is never split.
+                    data-numeric={RIGHT_ALIGNED.has(c.format) || undefined}
+                    className={cn('px-3 py-2 whitespace-nowrap', RIGHT_ALIGNED.has(c.format) && 'text-right')}
+                  >
                     {c.key ? formatKey(row[c.name] ?? null, c.format) : formatValue(row[c.name] ?? null, c.format)}
                   </td>
                 ))}

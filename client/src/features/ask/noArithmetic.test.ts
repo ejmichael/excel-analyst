@@ -25,6 +25,11 @@ const ANSWER_FILES = [
   '../reports/DraftBanner.tsx',
   '../autoReport/BuildReportSection.tsx',
   '../autoReport/BuildReportDialog.tsx',
+  // Download, share and the public report page (Part 5).
+  '../reports/ExcelButton.tsx',
+  '../reports/ShareDialog.tsx',
+  '../reports/print.tsx',
+  '../public/PublicReportPage.tsx',
 ];
 
 const FORBIDDEN: Array<[RegExp, string]> = [

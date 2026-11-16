@@ -106,6 +106,25 @@ describe('ReportPage: reading', () => {
     expect(await screen.findByText('Some checks did not pass, so check these numbers before you rely on them.')).toBeInTheDocument();
   });
 
+  it('marks what prints: controls hidden, answers kept together, the brand band in colour, the watermark and footer kept', async () => {
+    setup(makeReport());
+    await screen.findByRole('heading', { level: 1, name: 'October review' });
+    expect(screen.getByRole('group', { name: 'Report actions' })).toHaveAttribute('data-print', 'hide');
+    expect(screen.getByRole('link', { name: 'All reports' })).toHaveAttribute('data-print', 'hide');
+    expect(screen.getByTestId('report-brand-band')).toHaveAttribute('data-brand-band');
+    expect(document.querySelectorAll('[data-print-answer]')).toHaveLength(3);
+    // The watermark line is not hidden in print, and the dated footer prints after the last answer.
+    expect(screen.getByText('Made with Analyst').closest('[data-print="hide"]')).toBeNull();
+    expect(screen.getByText(/October review · Printed/)).toHaveAttribute('data-print', 'only');
+    // The flagged answer prints with its warning: it is not inside anything hidden in print.
+    expect(screen.getAllByText('Check the numbers')[0]!.closest('[data-print="hide"]')).toBeNull();
+    // "How this was calculated" prints as a closed heading; its content is marked to stay hidden in print.
+    const toggle = screen.getAllByRole('button', { name: 'How this was calculated' })[0]!;
+    expect(toggle).toHaveAttribute('data-print', 'keep');
+    await userEvent.click(toggle);
+    expect(document.querySelector('[data-print-disclosure]')).not.toBeNull();
+  });
+
   it('no watermark when the API says so; no business name invented when it is empty', async () => {
     setup(makeReport({ watermark: false }, { business_name: null, logo_url: null }));
     await screen.findByRole('heading', { level: 1, name: 'October review' });
