@@ -90,7 +90,7 @@ Every warning or error message that points the user to the parse dialog names it
 ### Sharing
 | Method and path | Request | Response | Notes |
 |---|---|---|---|
-| GET `/reports/:id/share-links` | | `ShareLink[]` | |
+| GET `/reports/:id/share-links` | | `ShareLink[]` | `contains_personal_data` is true when the report's tables appear to contain personal details: a result column is (or is named like) a dataset column marked `is_pii`, or a stored value looks like an email, SA mobile number, valid SA ID number or a person's name. A best-effort warning, never a guarantee; computed when a link is created and when links are listed |
 | POST `/reports/:id/share-links` | `CreateShareLinkRequest` | 201 `ShareLink` | Needs `limits.share_links` |
 | DELETE `/share-links/:id` | | `ShareLink` | Revokes (sets `revoked_at`); returns the updated link |
 | GET `/public/reports/:token` | none | `PublicReport` | 404 if unknown, revoked or expired. Rate limit 60 per minute per IP. Increments `view_count`. Service-role read. Never returns the owner's email |
@@ -172,7 +172,7 @@ Every warning or error message that points the user to the parse dialog names it
 
 **Exports.** XLSX: sheet "Summary" (business name, report title, subtitle, period, generated date in SAST, a one-line caution to check important figures against the source), then one sheet per block (sheet names unique, 31 characters max) holding the title, question, narrative, and the result table with number formats (ZAR as `"R" #,##0.00`, percent `0.0%`, dates as real Excel dates), then a sheet "Working" listing each block's SQL and checks. Header fill uses `brand.color` when `limits.branding`. File name `<slug>-<YYYY-MM-DD>.xlsx`. CSV as described under blocks. Both set `Content-Disposition: attachment` and are not wrapped in `{ data }`.
 
-**Public reports.** `PublicReport` omits `sql` (empty string), `checks` (empty array) and sets `has_source_rows` false unless the link has `show_working`. Source-rows are never available on public links. A link is valid while `revoked_at` is null and (`expires_at` is null or in the future).
+**Public reports.** `PublicReport` omits `sql` (empty string) and `checks` (empty array) unless the link has `show_working`. `has_source_rows` is always false on `GET /public/reports/:token`, even with `show_working`, because source rows are never available on public links. Public responses carry `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow` and `Referrer-Policy: no-referrer`. A link is valid while `revoked_at` is null and (`expires_at` is null or in the future).
 
 **Retention.** See ARCHITECTURE 7. `expires_at` is set when profiling finishes. Expired datasets keep their blocks and reports.
 

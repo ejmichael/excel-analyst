@@ -436,6 +436,7 @@ export interface ShareLink {
   expires_at: ISODateTime | null;
   revoked_at: ISODateTime | null;
   view_count: number;
+  contains_personal_data: boolean; // best-effort warning, never a guarantee: the report's tables appear to contain personal details
   created_at: ISODateTime;
 }
 
@@ -444,7 +445,7 @@ export interface CreateShareLinkRequest {
   show_working?: boolean; // default false: hides SQL and checks on the public page
 }
 
-/** Public report: same as ReportDetail, but blocks' `sql` is '' and `checks` is [] unless show_working is true. */
+/** Public report: same as ReportDetail, but blocks' `sql` is '' and `checks` is [] unless show_working is true, and `has_source_rows` is always false. */
 export type PublicReport = ReportDetail;
 
 // ---------- templates and runs ----------
