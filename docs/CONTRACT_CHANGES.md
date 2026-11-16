@@ -116,3 +116,12 @@ Entry format:
   3. `logo_url: null` on public reports (no logo on shared pages).
 - Affects: `GET /public/reports/:token`, the client's public page.
 - Status: APPLIED (approved by the user 2026-11-16, option 1; applied by the server chat: the media type comes from the file's magic bytes, the logo is embedded only when the owner's plan allows branding and a logo exists, otherwise null; metadata is stripped)
+
+## 2026-11-16: "Report too large to export" as 422 validation_failed (from: user, written by the server chat)
+- What: `GET /reports/:id/export.xlsx` refuses a report above the export cap (300 000 cells: rows x columns over all answers, checked from the answers' row counts and column lists before any rows are read) with **500 `internal`** and the message "This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again." The client can only recognise it by matching that message text.
+- Why: 500 says the server failed; here the request is the problem and the user can fix it (remove answers). The client needs a stable, machine-readable signal instead of the message text.
+- Proposed shape: **422 `validation_failed`** (existing status and code; no new error code), same message, nothing counted (no `export` usage event), with `details` in the shape the contract already gives every 422 `validation_failed`, `ValidationFailedDetails`. `Dataset.error_details` (`PlanLimitDetails`) does not fit: this is not a plan limit (the cap is the same on every plan) and `LimitKey` has no value for it. The machine-readable part, one of:
+  1. **No type change (recommended):** `details: { fields: [{ location: "params", path: "id", message: "<the message>" }] }`. This endpoint has no body or query, and a malformed id is 404, so a 422 from `export.xlsx` can only mean "too large"; the client keys on status 422 + `validation_failed` + `fields[0].path === "id"` on this endpoint.
+  2. **Small additive type change:** as in option 1, plus an optional `reason?: 'export_too_large'` on `ValidationFailedDetails` (absent everywhere else), so the client can key on `details.reason` without knowing the endpoint.
+- Affects: `GET /reports/:id/export.xlsx` (API_CONTRACT Reports row and the "Exports" rule), `api-types.ts` only for option 2, client Download Excel error handling (switch from matching the message text), server route and integration test.
+- Status: PROPOSED
