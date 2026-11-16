@@ -446,7 +446,17 @@ export interface CreateShareLinkRequest {
 }
 
 /** Public report: same as ReportDetail, but blocks' `sql` is '' and `checks` is [] unless show_working is true, and `has_source_rows` is always false. */
-export type PublicReport = ReportDetail;
+/** A block on a public report: no dataset id. */
+export type PublicBlock = Omit<Block, 'dataset_id'>;
+
+export interface PublicReportBlock {
+  position: number;
+  heading_override: string | null;
+  block: PublicBlock;
+}
+
+/** No workspace or template id; blocks carry PublicBlock. */
+export type PublicReport = Omit<ReportDetail, 'workspace_id' | 'template_id' | 'blocks'> & { blocks: PublicReportBlock[] };
 
 // ---------- templates and runs ----------
 export interface TemplateColumn {

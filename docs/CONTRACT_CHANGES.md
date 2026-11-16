@@ -105,4 +105,4 @@ Entry format:
   1. In `api-types.ts`: `export type PublicReport = Omit<ReportDetail, 'workspace_id' | 'template_id' | 'blocks'> & { blocks: Array<Omit<ReportBlock, 'block'> & { block: Omit<Block, 'dataset_id'> }> }`, and the public endpoint leaves those fields out. (Alternative that keeps the type: send `dataset_id: null` and `workspace_id: ''`, which is a placeholder rather than a real value.) Recommended: the `Omit` type.
   2. Treat the owner's DELETE response like the owner's list: it returns the full `ShareLink`, token included. (Alternative: DELETE returns the link with `token: ''` and `url: ''`.) Recommended: the full link, since it never leaves the owner's session.
 - Affects: `api-types.ts` (`PublicReport`), `GET /public/reports/:token`, `DELETE /share-links/:id`, the client's public page and share dialog.
-- Status: PROPOSED
+- Status: APPLIED (approved by the user 2026-11-16: (1) the Omit types `PublicBlock`, `PublicReportBlock` and `PublicReport`; (2) DELETE returns the full ShareLink, token and url included; tokens are still never logged)
