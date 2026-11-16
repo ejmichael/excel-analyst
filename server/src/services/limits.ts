@@ -80,6 +80,25 @@ export function createAssertWithinLimit(ds: LimitsDataSource) {
   };
 }
 
+/**
+ * Throws 402 plan_limit unless this SAST month's remaining quota for `key` covers `needed` more (the auto-report
+ * pre-check: every stored suggestion, or one report). `used` is this month's count, `upgrade_to` the cheapest plan
+ * whose limit covers `used + needed`. Checks are made in the order given; the first that falls short throws.
+ */
+export function createAssertQuotaCovers(ds: LimitsDataSource) {
+  return async function assertQuotaCovers(userId: string, needs: Array<{ key: MonthlyKey; needed: number }>): Promise<void> {
+    const [plan, all] = await Promise.all([ds.getPlan(userId), ds.getAllPlanLimits()]);
+    const limits = all.find((l) => l.plan === plan);
+    if (!limits) throw new Error(`plan_limits has no row for plan ${plan}`);
+    for (const { key, needed } of needs) {
+      const used = await ds.countUsageSince(userId, MONTHLY_USAGE_KIND[key], monthStartSastInstant());
+      if (used + needed > limits[key]) {
+        throw planLimit({ limit_key: key, limit: limits[key], used, upgrade_to: cheapestPlanAllowing(all, plan, (l) => used + needed <= l[key]) });
+      }
+    }
+  };
+}
+
 export function toPlanLimits(row: Record<string, unknown>): PlanLimits {
   return {
     plan: row.plan as Plan,
@@ -134,3 +153,4 @@ export const supabaseLimitsDataSource: LimitsDataSource = {
 };
 
 export const assertWithinLimit = createAssertWithinLimit(supabaseLimitsDataSource);
+export const assertQuotaCovers = createAssertQuotaCovers(supabaseLimitsDataSource);

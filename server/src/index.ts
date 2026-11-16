@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { createApp } from './app.js';
 import { env, loadEnv } from './config/env.js';
 import { logger } from './lib/logger.js';
+import { sweepInterruptedAutoReports } from './services/autoReport.js';
 import { sweepInterruptedProfiling } from './services/profiling.js';
 
 try {
@@ -19,6 +20,12 @@ try {
   if (swept > 0) logger.warn({ swept }, 'marked interrupted profiling jobs as failed');
 } catch {
   logger.error('boot sweep failed');
+}
+try {
+  const swept = await sweepInterruptedAutoReports();
+  if (swept > 0) logger.warn({ swept }, 'marked interrupted auto-report runs as failed');
+} catch {
+  logger.error('auto-report boot sweep failed');
 }
 
 createApp().listen(PORT, () => {

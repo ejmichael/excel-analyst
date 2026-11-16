@@ -8,7 +8,7 @@ import { llm } from '../llm/client.js';
 import { askRateLimit } from '../middleware/rateLimit.js';
 import { requireUuidParam, validate, validQuery } from '../middleware/validate.js';
 import { ask, AskLlmFailure } from '../services/analysis/ask.js';
-import { BLOCK_COLUMNS, type BlockRow, getOwnBlock, toBlock } from '../services/blocks.js';
+import { BLOCK_COLUMNS, type BlockRow, getOwnBlock, saveAnsweredBlock, toBlock } from '../services/blocks.js';
 import { type ColumnRow, type DatasetRow, getColumns, getOwnDataset } from '../services/datasets.js';
 import { assertWithinLimit } from '../services/limits.js';
 import { SandboxError, withSandbox } from '../services/sandbox/sandbox.js';
@@ -71,21 +71,8 @@ blocksRouter.post('/datasets/:id/ask', askRateLimit, requireUuidParam(), validat
   }
   if (outcome.kind === 'cannot_answer') throw new AppError('cannot_answer', outcome.message);
 
-  const { data: row, error } = await supabaseAdmin()
-    .from('blocks')
-    .insert({ owner_id: userId, dataset_id: datasetId, ...outcome.block })
-    .select(BLOCK_COLUMNS)
-    .single<BlockRow>();
-  throwIfDbError('blocks: insert', error);
-  // Counted only once the block is saved.
-  await recordUsage(userId, 'question', {
-    block_id: row!.id,
-    dataset_id: datasetId,
-    flagged: row!.status === 'flagged',
-    // Why a planned reconcile was discarded (a category, never SQL), or null.
-    reconcile_skipped: outcome.reconcileSkipped,
-  });
-  ok(res, toBlock(row!), 201);
+  const row = await saveAnsweredBlock(userId, datasetId, outcome.block, outcome.reconcileSkipped);
+  ok(res, toBlock(row), 201);
 });
 
 // ---------- GET /datasets/:id/blocks, GET /blocks/:id ----------

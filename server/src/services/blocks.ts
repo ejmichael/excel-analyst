@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { notFound, throwIfDbError } from '../lib/errors.js';
+import { supabaseAdmin } from '../lib/supabase.js';
+import type { BlockDraft } from './analysis/ask.js';
+import type { ReconcileSkipReason } from './analysis/reconcileGuard.js';
+import { recordUsage } from './usageEvents.js';
 import type { Block, BlockCheck, BlockSource, BlockStatus, CellValue, ChartSpec, ResultColumn } from '../types/api.js';
 
 /** Database rows for blocks and their mapping to the contract's Block. */
@@ -60,4 +64,30 @@ export async function getOwnBlock(db: SupabaseClient, userId: string, id: string
   throwIfDbError('blocks: read', error);
   if (!data) throw notFound('Answer not found.');
   return data;
+}
+
+/**
+ * Saves an answered question's block and writes its `question` usage event (counted only once the block is saved).
+ * Used by POST /datasets/:id/ask and the auto-report job, so both count and record a question the same way.
+ */
+export async function saveAnsweredBlock(
+  userId: string,
+  datasetId: string,
+  block: BlockDraft,
+  reconcileSkipped: ReconcileSkipReason | null,
+): Promise<BlockRow> {
+  const { data: row, error } = await supabaseAdmin()
+    .from('blocks')
+    .insert({ owner_id: userId, dataset_id: datasetId, ...block })
+    .select(BLOCK_COLUMNS)
+    .single<BlockRow>();
+  throwIfDbError('blocks: insert', error);
+  await recordUsage(userId, 'question', {
+    block_id: row!.id,
+    dataset_id: datasetId,
+    flagged: row!.status === 'flagged',
+    // Why a planned reconcile was discarded (a category, never SQL), or null.
+    reconcile_skipped: reconcileSkipped,
+  });
+  return row!;
 }

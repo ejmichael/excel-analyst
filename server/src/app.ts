@@ -8,6 +8,7 @@ import { requireAuth } from './middleware/auth.js';
 import { requireConsent } from './middleware/consent.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { ipRateLimit, userRateLimit } from './middleware/rateLimit.js';
+import { autoReportsRouter } from './routes/autoReports.js';
 import { blocksRouter } from './routes/blocks.js';
 import { datasetsRouter } from './routes/datasets.js';
 import { healthRouter } from './routes/health.js';
@@ -50,6 +51,7 @@ export function createApp(): Express {
   v1.use(blocksRouter);
   v1.use(reportsRouter);
   v1.use(brandingRouter);
+  v1.use(autoReportsRouter);
 
   app.use('/api/v1', v1);
   app.use(notFoundHandler);

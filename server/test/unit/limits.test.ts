@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../../src/lib/errors.js';
-import { createAssertWithinLimit, type LimitsDataSource } from '../../src/services/limits.js';
+import { createAssertQuotaCovers, createAssertWithinLimit, type LimitsDataSource } from '../../src/services/limits.js';
 import type { LimitKey, Plan, PlanLimits } from '../../src/types/api.js';
 
 // Same values as the seed rows in db/schema.sql.
@@ -138,5 +138,43 @@ describe('assertWithinLimit: feature flags', () => {
 
   it.each(['branding', 'share_links'] as const)('%s is allowed on solo', async (key) => {
     await passes({ plan: 'solo' }, key);
+  });
+});
+
+describe('assertQuotaCovers (the auto-report pre-check)', () => {
+  const needs = (questions: number) => [
+    { key: 'max_questions_per_month' as const, needed: questions },
+    { key: 'max_reports_per_month' as const, needed: 1 },
+  ];
+  async function shortfall(f: Fake, questions: number) {
+    try {
+      await createAssertQuotaCovers(source(f))('u1', needs(questions));
+    } catch (err) {
+      expect((err as AppError).status).toBe(402);
+      expect((err as AppError).code).toBe('plan_limit');
+      return (err as AppError).details;
+    }
+    throw new Error('expected a plan_limit error');
+  }
+
+  it('passes when the remaining quota covers every question and one report, exactly at the limit', async () => {
+    await expect(createAssertQuotaCovers(source({ plan: 'free', question: 15, report: 0 }))('u1', needs(5))).resolves.toBeUndefined();
+  });
+
+  it('refuses when the questions do not all fit, with used = this month and upgrade_to the cheapest plan that fits them', async () => {
+    expect(await shortfall({ plan: 'free', question: 16, report: 0 }, 5)).toEqual({ limit_key: 'max_questions_per_month', limit: 20, used: 16, upgrade_to: 'solo' });
+  });
+
+  it('checks questions before reports', async () => {
+    expect(await shortfall({ plan: 'free', question: 20, report: 1 }, 5)).toMatchObject({ limit_key: 'max_questions_per_month' });
+  });
+
+  it('refuses when no report is left', async () => {
+    expect(await shortfall({ plan: 'free', question: 0, report: 1 }, 5)).toEqual({ limit_key: 'max_reports_per_month', limit: 1, used: 1, upgrade_to: 'solo' });
+  });
+
+  it('upgrade_to accounts for what the run needs, not just one more', async () => {
+    // solo allows 300 questions: 298 used + 5 needed does not fit, practice (2000) does.
+    expect(await shortfall({ plan: 'solo', question: 298 }, 5)).toMatchObject({ limit_key: 'max_questions_per_month', used: 298, upgrade_to: 'practice' });
   });
 });
