@@ -1,13 +1,14 @@
 /*
- * Print: "Download PDF" is the browser's print window (Save as PDF). The printed page is the report only, on A4.
- * Elements opt in with data attributes:
+ * Print: "Download PDF" is the browser's print window (Save as PDF). The look of the printed report is the document
+ * look (report-doc.css); this file holds what only applies on paper: the page, what is left out, and where pages
+ * may break. Elements opt in with data attributes:
  *   data-print="hide"       app chrome, buttons, banners and edit controls (never printed)
- *   data-print="only"       printed only (the footer with the generated date)
- *   data-print-answer       one answer: kept together where it fits
- *   data-print-table        a result table: never clipped, header row repeated on each page
- *   data-print-disclosure   the content of "How this was calculated": printed closed
- *   data-brand-band         the brand colour band: printed in colour
- *   data-print-shell        the app shell root: one plain column in print
+ *   data-print="only"       printed only
+ *   data-print-shell        the app shell root: one plain white column in print
+ *   data-answer-working     "How this was calculated" (and with it the SQL and source rows): never printed
+ *   data-print-answer       one answer; data-answer-kind="chart" | "table" says how it may break
+ *   data-print-table        a result table
+ * The running footer's left side (the report's title) is set by the report page (features/reports/print.tsx).
  */
 
 [data-print='only'] {
@@ -16,13 +17,13 @@
 
 @page {
   size: A4 portrait;
-  margin: 14mm 12mm 16mm;
+  margin: 18mm 16mm 20mm;
 
   @bottom-right {
     content: 'Page ' counter(page) ' of ' counter(pages);
     font-family: 'Inter Variable', sans-serif;
     font-size: 8pt;
-    color: #4f5b56;
+    color: #56625c;
   }
 }
 
@@ -30,16 +31,15 @@
   html,
   body {
     background: #fff !important;
-    font-size: 10.5pt;
   }
 
-  /* App chrome, controls and banners. */
+  /* App chrome, controls, banners, dialogs and the working (SQL, checks, source rows). */
   [data-print='hide'],
   nav,
   aside,
-  button:not([data-print='keep']),
+  button,
   [role='dialog'],
-  [data-print-disclosure] {
+  [data-answer-working] {
     display: none !important;
   }
 
@@ -55,72 +55,43 @@
     display: block !important;
     background: #fff !important;
     min-height: 0 !important;
+    box-shadow: none !important;
   }
 
   /* The report fills the page: no app padding, side panel room or max width. */
   main,
-  [data-print-root] {
+  [data-report-root],
+  [data-doc] {
     padding: 0 !important;
     margin: 0 !important;
     max-width: none !important;
-  }
-
-  /*
-   * An answer is kept on one page where it fits: if it would split, it starts on the next page. An answer with a long
-   * table (20 rows or more) may continue onto the next pages, so a long table never leaves a blank page behind it.
-   */
-  li:has(> [data-print-answer]),
-  [data-print-answer] {
-    break-inside: avoid;
-    page-break-inside: avoid;
     box-shadow: none !important;
   }
 
-  li:has(> [data-print-answer] [data-print-table] tbody tr:nth-child(20)),
-  [data-print-answer]:has([data-print-table] tbody tr:nth-child(20)) {
-    break-inside: auto;
-    page-break-inside: auto;
+  /* ---------- Where pages may break ---------- */
+
+  /* An answer's heading, question and narrative stay with the start of its content; the narrative never splits. */
+  [data-answer-meta],
+  [data-answer-meta] h2,
+  [data-answer-meta] h3,
+  [data-answer-question] {
+    break-after: avoid;
+    break-inside: avoid;
   }
 
-  /* The disclosure button prints as a closed heading (no chevron). */
-  button[data-print='keep'] {
-    min-height: 0 !important;
-    padding: 0.25rem 0 !important;
+  [data-answer-narrative],
+  [data-flagged-note] {
+    break-inside: avoid;
+    break-after: avoid;
   }
 
-  button[data-print='keep'] svg {
-    display: none !important;
+  /* A chart answer is never split: heading, narrative, chart and check line stay on one page. */
+  [data-report-answers] > li:has(> [data-answer-kind='chart']),
+  [data-print-answer][data-answer-kind='chart'] {
+    break-inside: avoid;
   }
 
-  /* Tables: no scroll box, no clipping; long tables continue on the next page with their header row. */
-  [data-print-table] {
-    max-height: none !important;
-    overflow: visible !important;
-  }
-
-  [data-print-table] table {
-    width: 100% !important;
-    table-layout: auto;
-    font-size: 8.5pt;
-  }
-
-  /* Text wraps between words (a word breaks only if it cannot fit); amounts stay on one line. */
-  [data-print-table] th,
-  [data-print-table] td {
-    white-space: normal !important;
-    overflow-wrap: break-word;
-    padding: 0.2rem 0.35rem !important;
-  }
-
-  [data-print-table] td[data-numeric] {
-    white-space: nowrap !important;
-  }
-
-  /* Wide tables (8 columns or more) print smaller, so every column fits the page. */
-  [data-print-table] table:has(thead th:nth-child(8)) {
-    font-size: 7.5pt;
-  }
-
+  /* A table answer may break between rows (never inside one), with its header row repeated on each page. */
   [data-print-table] thead {
     display: table-header-group;
   }
@@ -129,11 +100,55 @@
     break-inside: avoid;
   }
 
+  /* At least three rows on each side of a break: rows 2-3 stay with row 1, and the last three stay together. */
+  [data-print-table] tbody tr:nth-child(-n + 3),
+  [data-print-table] tbody tr:nth-last-child(-n + 2) {
+    break-before: avoid;
+  }
+
+  /* "All checks passed" never starts a page on its own. */
+  [data-check-line] {
+    break-before: avoid;
+  }
+
+  /* The closing note stays in one piece and never lands alone on a page. */
+  [data-closing-note] {
+    break-inside: avoid;
+    break-before: avoid;
+  }
+
+  /* ---------- Tables and charts on paper ---------- */
+
+  /* No scroll box, no clipping; text wraps between words and amounts stay on one line. */
+  [data-print-table] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  [data-print-table] table {
+    width: 100% !important;
+    table-layout: auto;
+  }
+
+  [data-print-table] th,
+  [data-print-table] td {
+    white-space: normal !important;
+    overflow-wrap: break-word;
+  }
+
+  [data-print-table] td[data-numeric] {
+    white-space: nowrap !important;
+  }
+
+  /* Wide tables (8 columns or more) print smaller, so every column fits the page. */
+  [data-print-table] table:has(thead th:nth-child(8)) {
+    font-size: 7.5pt !important;
+  }
+
   /*
    * Charts: the chart was drawn at the screen width, so scale it down to the page width (the SVG keeps its aspect
    * ratio through its viewBox). The responsive container keeps its size: shrinking it would make Recharts draw nothing.
    */
-  /* Recharts measures through a zero-size div; give it the page width so the percentages below resolve. */
   .recharts-responsive-container > div {
     width: 100% !important;
   }
@@ -145,21 +160,6 @@
   svg.recharts-surface {
     max-width: 100% !important;
     height: auto !important;
-  }
-
-  /* Brand band and chart colours are printed as they are, not dropped to save ink. */
-  [data-brand-band],
-  [data-print-answer],
-  svg.recharts-surface,
-  .recharts-legend-wrapper {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  /* The brand header starts the first page, in one piece. */
-  [data-testid='report-header'] {
-    break-inside: avoid;
-    margin-top: 0 !important;
   }
 
   a {

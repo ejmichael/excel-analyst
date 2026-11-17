@@ -183,3 +183,44 @@ export function buildChartModel(block: Pick<Block, 'chart' | 'columns' | 'rows'>
 export function shortLabel(text: string, max = 18): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+/**
+ * A category label wrapped to at most `lines` lines of about `max` characters: breaks between words, breaks a long
+ * word (such as a URL) anywhere, and ends with an ellipsis only when text is left after the last line.
+ */
+export function wrapLabel(text: string, max: number, lines = 2): string[] {
+  // Fractional is fine: slice() and the length comparisons work with it.
+  const width = Math.max(1, max);
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  let current = '';
+  const push = () => {
+    if (current) out.push(current);
+    current = '';
+  };
+  for (let word of words) {
+    while (word.length > width) {
+      // A word longer than a line: fill the current line, then break the word anywhere.
+      const room = current ? width - current.length - 1 : width;
+      if (room <= 0) push();
+      const take = current ? width - current.length - 1 : width;
+      const head = word.slice(0, take);
+      current = current ? `${current} ${head}` : head;
+      word = word.slice(take);
+      push();
+    }
+    if (!word) continue;
+    if (!current) current = word;
+    else if (current.length + 1 + word.length <= width) current = `${current} ${word}`;
+    else {
+      push();
+      current = word;
+    }
+  }
+  push();
+  if (out.length <= lines) return out;
+  const kept = out.slice(0, lines);
+  const last = kept[lines - 1]!;
+  kept[lines - 1] = `${last.length >= width ? last.slice(0, width - 1) : last}…`;
+  return kept;
+}

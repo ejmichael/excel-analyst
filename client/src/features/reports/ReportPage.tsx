@@ -25,7 +25,8 @@ import { AnswerCard } from '@/features/ask/AnswerCard';
 import type { DatasetState } from '@/features/ask/HowCalculated';
 import { AddAnswersDialog } from './AddAnswersDialog';
 import { DraftBanner, draftDismissals } from './DraftBanner';
-import { DownloadPdfButton, PrintFooter } from './print';
+import { documentVars } from './document';
+import { ClosingNote, DownloadPdfButton, RunningFooter, useDocumentTitle, usePrinting } from './print';
 import { ExcelButton } from './ExcelButton';
 import { ShareDialog } from './ShareDialog';
 import { PERIOD_MAX, SUBTITLE_MAX, TITLE_MAX } from './CreateReportDialog';
@@ -113,6 +114,9 @@ function ReportView({ report }: { report: ReportDetail }) {
   // Made by "Build my report": a notice that it is a draft, until dismissed for this report.
   const showDraftBanner = searchParams.get('draft') === '1' && !draftDismissed;
   const update = useUpdateReport(report.id);
+  // The tab, the browser's print header and the saved PDF say the report's title.
+  useDocumentTitle(report.title, env.appName);
+  const printing = usePrinting();
   const remove = useDeleteReport(report.id, report.workspace_id);
 
   const shown = editing ? draft.blocks : draftFrom(report).blocks;
@@ -186,7 +190,9 @@ function ReportView({ report }: { report: ReportDetail }) {
     setDraft((d) => ({ ...d, [key]: event.target.value }));
 
   return (
-    <div className="space-y-6">
+    // The report root carries the brand for the document look, which applies when it prints (styles/report-doc.css).
+    <div className="space-y-6" data-report-root style={documentVars(report.brand)}>
+      <RunningFooter title={report.title} businessName={report.brand.business_name} />
       {showDraftBanner && (
         <DraftBanner
           report={report}
@@ -278,7 +284,7 @@ function ReportView({ report }: { report: ReportDetail }) {
         />
       )}
 
-      <ol className="space-y-6" aria-label="Answers in this report">
+      <ol className="space-y-6" aria-label="Answers in this report" data-report-answers>
         {shown.map((item, i) => {
           const dataset = item.block.dataset_id ? (datasets.get(item.block.dataset_id) ?? DELETED) : DELETED;
           return (
@@ -322,7 +328,13 @@ function ReportView({ report }: { report: ReportDetail }) {
                   </div>
                 </div>
               )}
-              <AnswerCard block={item.block} dataset={dataset} mode="report" heading={item.heading.trim() || undefined} />
+              <AnswerCard
+                block={item.block}
+                dataset={dataset}
+                mode="report"
+                heading={item.heading.trim() || undefined}
+                documentLook={printing}
+              />
             </li>
           );
         })}
@@ -354,8 +366,13 @@ function ReportView({ report }: { report: ReportDetail }) {
         </div>
       )}
 
-      {report.watermark && <p className="pt-4 text-center text-sm text-muted-foreground">Made with {env.appName}</p>}
-      <PrintFooter title={report.title} />
+      {/* On paper the watermark is part of the closing note. */}
+      {report.watermark && (
+        <p data-print="hide" className="pt-4 text-center text-sm text-muted-foreground">
+          Made with {env.appName}
+        </p>
+      )}
+      <ClosingNote watermark={report.watermark} appName={env.appName} owner />
 
       {/* Mounted only while open: it loads the links and the plan when needed. */}
       {sharing && <ShareDialog open report={report} onClose={() => setSharing(false)} />}

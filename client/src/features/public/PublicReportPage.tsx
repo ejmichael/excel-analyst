@@ -11,7 +11,8 @@ import { formatNumber } from '@/lib/format';
 import { AnswerCard } from '@/features/ask/AnswerCard';
 import type { DatasetState } from '@/features/ask/HowCalculated';
 import { ReportHeader } from '@/features/reports/ReportHeader';
-import { DownloadPdfButton, PrintFooter } from '@/features/reports/print';
+import { documentVars } from '@/features/reports/document';
+import { ClosingNote, DownloadPdfButton, RunningFooter } from '@/features/reports/print';
 
 export const UNAVAILABLE_MESSAGE = "This link isn't available. It may have expired or been turned off. Ask the person who sent it for a new link.";
 
@@ -93,7 +94,8 @@ export function PublicReportPage() {
 
 function SharedReport({ report, onLogoError, logoHidden }: { report: PublicReport; onLogoError: () => void; logoHidden: boolean }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-report-root style={documentVars(report.brand)}>
+      <RunningFooter title={report.title} businessName={report.brand.business_name} />
       <div className="flex flex-wrap items-start justify-between gap-3" data-print="hide">
         <p className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground">
           <LinkIcon className="size-4" aria-hidden />
@@ -113,20 +115,20 @@ function SharedReport({ report, onLogoError, logoHidden }: { report: PublicRepor
         logoHidden={logoHidden}
       />
 
-      <ol className="space-y-6" aria-label="Answers in this report">
+      <ol className="space-y-6" aria-label="Answers in this report" data-report-answers>
         {report.blocks.map((item) => {
           // The public answer has no dataset id; the card treats it as an answer without a file behind it.
           const block: Block = { ...item.block, dataset_id: null };
           return (
             <li key={item.block.id}>
-              <AnswerCard block={block} dataset={NO_FILE} mode="public" heading={item.heading_override ?? undefined} />
+              <AnswerCard block={block} dataset={NO_FILE} mode="public" heading={item.heading_override ?? undefined} documentLook />
             </li>
           );
         })}
       </ol>
 
-      {report.watermark && <p className="pt-4 text-center text-sm text-muted-foreground">Made with {env.appName}</p>}
-      <PrintFooter title={report.title} />
+      {/* A shared report says nothing about the Excel download: that is the owner's. */}
+      <ClosingNote watermark={report.watermark} appName={env.appName} owner={false} />
     </div>
   );
 }

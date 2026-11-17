@@ -63,7 +63,7 @@ function setup(report: ReportDetail, extra: (url: string, init: RequestInit) => 
     return json(404, { error: { code: 'not_found', message: 'x' } });
   };
   configureApiClient({ transport, getAccessToken: async () => 't', refreshAccessToken: async () => null, onUnauthorized: () => {} });
-  render(
+  const view = render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter initialEntries={['/reports/r1']}>
         <Routes>
@@ -73,7 +73,7 @@ function setup(report: ReportDetail, extra: (url: string, init: RequestInit) => 
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return { calls, patches: () => calls.filter((c) => c.method === 'PATCH').map((c) => c.body) };
+  return { calls, patches: () => calls.filter((c) => c.method === 'PATCH').map((c) => c.body), unmount: view.unmount };
 }
 
 const blockHeadings = () =>
@@ -91,7 +91,11 @@ describe('ReportPage: reading', () => {
     expect(within(band).getByRole('img', { name: 'Mokoena Bakery logo' })).toBeInTheDocument();
     expect(screen.getByText('October 2026 · 2 November 2026')).toBeInTheDocument();
     expect(blockHeadings()).toEqual(['Net sales by store', 'Card fees', 'Average sale per store']);
-    expect(screen.getByText('Made with Analyst')).toBeInTheDocument();
+    // On screen under the report (hidden in print), and in the closing note that prints instead.
+    const watermarks = screen.getAllByText('Made with Analyst');
+    expect(watermarks).toHaveLength(2);
+    expect(watermarks[0]).toHaveAttribute('data-print', 'hide');
+    expect(watermarks[1]!.closest('[data-closing-note]')).not.toBeNull();
     // In a report: no follow-ups, no feedback, delete or add-to-report.
     expect(screen.queryByText('Ask next')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'This looks wrong' })).not.toBeInTheDocument();
@@ -106,30 +110,61 @@ describe('ReportPage: reading', () => {
     expect(await screen.findByText('Some checks did not pass, so check these numbers before you rely on them.')).toBeInTheDocument();
   });
 
-  it('marks what prints: controls hidden, answers kept together, the brand band in colour, the watermark and footer kept', async () => {
+  it('marks what prints: controls hidden, the document parts marked, the working left out, the closing note with the Excel sentence', async () => {
     setup(makeReport());
     await screen.findByRole('heading', { level: 1, name: 'October review' });
     expect(screen.getByRole('group', { name: 'Report actions' })).toHaveAttribute('data-print', 'hide');
     expect(screen.getByRole('link', { name: 'All reports' })).toHaveAttribute('data-print', 'hide');
-    expect(screen.getByTestId('report-brand-band')).toHaveAttribute('data-brand-band');
-    expect(document.querySelectorAll('[data-print-answer]')).toHaveLength(3);
-    // The watermark line is not hidden in print, and the dated footer prints after the last answer.
-    expect(screen.getByText('Made with Analyst').closest('[data-print="hide"]')).toBeNull();
-    expect(screen.getByText(/October review · Printed/)).toHaveAttribute('data-print', 'only');
-    // The flagged answer prints with its warning: it is not inside anything hidden in print.
-    expect(screen.getAllByText('Check the numbers')[0]!.closest('[data-print="hide"]')).toBeNull();
-    // "How this was calculated" prints as a closed heading; its content is marked to stay hidden in print.
-    const toggle = screen.getAllByRole('button', { name: 'How this was calculated' })[0]!;
-    expect(toggle).toHaveAttribute('data-print', 'keep');
-    await userEvent.click(toggle);
-    expect(document.querySelector('[data-print-disclosure]')).not.toBeNull();
+    // The report root carries the brand for the document look: the colour, its 3:1 mark colour and the table tint.
+    const root = document.querySelector<HTMLElement>('[data-report-root]')!;
+    expect(root.style.getPropertyValue('--brand')).toBe('#7A1E3C');
+    expect(root.style.getPropertyValue('--brand-mark')).toBe('#7A1E3C');
+    expect(root.style.getPropertyValue('--brand-tint')).toMatch(/^#[0-9A-F]{6}$/);
+    expect(screen.getByTestId('report-header')).toHaveAttribute('data-report-header');
+    expect(screen.getByRole('list', { name: 'Answers in this report' })).toHaveAttribute('data-report-answers');
+    // How each answer may break on paper comes from its chart type, never from a figure.
+    expect([...document.querySelectorAll('[data-print-answer]')].map((a) => a.getAttribute('data-answer-kind'))).toEqual(['chart', 'chart', 'chart']);
+    // Per-answer timestamps are marked so the document leaves them out.
+    expect(document.querySelectorAll('[data-answer-time]')).toHaveLength(3);
+    // "How this was calculated" (and with it the SQL and source rows) is inside what print leaves out.
+    for (const toggle of screen.getAllByRole('button', { name: 'How this was calculated' })) {
+      expect(toggle.closest('[data-answer-working]')).not.toBeNull();
+    }
+    // The owner's closing note says where the working is.
+    const note = document.querySelector('[data-closing-note]')!;
+    expect(note).toHaveTextContent('Check important figures against your source file.');
+    expect(note).toHaveTextContent('The working for each figure is in the Excel download.');
+    expect(note).toHaveTextContent('Made with Analyst');
+  });
+
+  it('a flagged answer prints its warning and not the passed line', async () => {
+    setup(makeReport());
+    const flagged = (await screen.findAllByRole('article'))[2]!;
+    expect(flagged.querySelector('[data-flagged-note]')).toHaveTextContent('Check the numbers');
+    expect(flagged.querySelector('[data-check-line]')).toBeNull();
+    const passed = screen.getAllByRole('article')[0]!;
+    expect(passed.querySelector('[data-check-line]')).toHaveTextContent('All checks passed.');
+    expect(passed.querySelector('[data-flagged-note]')).toBeNull();
+  });
+
+  it('the tab title is the report title while the page is open, and is restored on leaving', async () => {
+    document.title = 'Analyst';
+    const { unmount } = setup(makeReport());
+    await screen.findByRole('heading', { level: 1, name: 'October review' });
+    expect(document.title).toBe('October review');
+    unmount();
+    expect(document.title).toBe('Analyst');
   });
 
   it('no watermark when the API says so; no business name invented when it is empty', async () => {
     setup(makeReport({ watermark: false }, { business_name: null, logo_url: null }));
     await screen.findByRole('heading', { level: 1, name: 'October review' });
     expect(screen.queryByText(/Made with/)).not.toBeInTheDocument();
-    expect(screen.getByTestId('report-brand-band')).toHaveTextContent('');
+    // No logo and no business name: nothing in their place (no initials, no placeholder); only the date.
+    const band = screen.getByTestId('report-brand-band');
+    expect(within(band).queryByRole('img')).not.toBeInTheDocument();
+    expect(band.querySelector('[data-business-name]')).toBeNull();
+    expect(band).toHaveTextContent(/^2 November 2026$/);
   });
 
   it('refetches once when the logo fails (expired signed URL), then hides it quietly', async () => {

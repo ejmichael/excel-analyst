@@ -42,7 +42,7 @@ export function ReportHeader({
   const showLogo = Boolean(brand.logo_url) && !logoHidden;
 
   return (
-    <header className="overflow-hidden rounded-xl border bg-card" data-testid="report-header">
+    <header className="overflow-hidden rounded-xl border bg-card" data-testid="report-header" data-report-header>
       <div
         className="flex min-h-16 items-center gap-3 px-5 py-3"
         style={{ backgroundColor: brand.color, color: text }}
@@ -60,13 +60,33 @@ export function ReportHeader({
           />
         )}
         {/* Only the business name the user set; nothing is invented when it is empty. */}
-        {brand.business_name && <p className="font-heading text-lg font-semibold break-words">{brand.business_name}</p>}
+        {brand.business_name && (
+          <p data-business-name className="font-heading text-lg font-semibold break-words">
+            {brand.business_name}
+          </p>
+        )}
+        {/* On a report document the date sits at the right of the identity line (hidden in the app). */}
+        {createdAt && <p data-masthead-date>{formatDate(createdAt)}</p>}
       </div>
-      <div className="space-y-2 px-5 py-4">
+      <div data-masthead-body className="space-y-2 px-5 py-4">
         {titleSlot ?? <Heading className="text-2xl font-semibold break-words sm:text-3xl">{title}</Heading>}
-        {subtitle && <p className="text-lg break-words">{subtitle}</p>}
-        {meta && <p className="text-sm text-muted-foreground">{meta}</p>}
-        {notes && <p className="whitespace-pre-line break-words">{notes}</p>}
+        {subtitle && (
+          <p data-masthead-subtitle className="text-lg break-words">
+            {subtitle}
+          </p>
+        )}
+        {/* On a report document the period stands alone under the title (hidden in the app). */}
+        {periodLabel && <p data-masthead-period>{periodLabel}</p>}
+        {meta && (
+          <p data-masthead-meta className="text-sm text-muted-foreground">
+            {meta}
+          </p>
+        )}
+        {notes && (
+          <p data-masthead-notes className="whitespace-pre-line break-words">
+            {notes}
+          </p>
+        )}
       </div>
     </header>
   );

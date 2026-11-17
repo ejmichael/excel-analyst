@@ -21,7 +21,7 @@ import { BarChart3, Table2 } from 'lucide-react';
 import type { Block, ValueFormat } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { formatNumber, formatValue } from '@/lib/format';
-import { buildChartModel, formatOf, groupKeyColumns, shortLabel, type ChartModel } from './chartData';
+import { buildChartModel, formatOf, groupKeyColumns, shortLabel, wrapLabel, type ChartModel } from './chartData';
 import { colourAt, dashAt } from './chartPalette';
 import { ResultTable } from './ResultTable';
 
@@ -68,8 +68,25 @@ function CategoryTick(props: {
   /** Passed by Recharts: the axis width and the number of ticks shown, so a label can fit its slot. */
   width?: number;
   visibleTicksCount?: number;
+  /** A report document's horizontal bars: wrap the label at about this many characters. */
+  wrapAt?: number;
 }) {
   const full = String(props.payload?.value ?? '');
+  if (props.wrapAt) {
+    // A report document: up to two lines in the label column, then an ellipsis.
+    const lines = wrapLabel(full, props.wrapAt);
+    return (
+      <text x={props.x} y={props.y} textAnchor="end" fontSize={11} fill="var(--muted-foreground)">
+        <title>{full}</title>
+        {lines.map((line, i) => (
+          // The block of lines is centred on the bar.
+          <tspan key={i} x={props.x} dy={i === 0 ? (lines.length === 1 ? 4 : -2) : 13}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    );
+  }
   const max = props.horizontal ? 16 : categoryLabelMax(props.width, props.visibleTicksCount);
   return (
     <text
@@ -86,7 +103,13 @@ function CategoryTick(props: {
   );
 }
 
-export function BlockChart({ block }: { block: Block }) {
+/** 'document': a report document (the shared page, or the owner's report while it prints). */
+export type ChartLook = 'app' | 'document';
+
+/** On a report document, the category labels of horizontal bars get about this share of the chart's width. */
+export const DOCUMENT_LABEL_SHARE = 0.36;
+
+export function BlockChart({ block, look = 'app' }: { block: Block; look?: ChartLook }) {
   const model = useMemo(() => buildChartModel(block), [block]);
   const keys = useMemo(() => groupKeyColumns(block), [block]);
   const [asTable, setAsTable] = useState(model.kind === 'table');
@@ -125,15 +148,15 @@ export function BlockChart({ block }: { block: Block }) {
           </Button>
         </div>
       )}
-      <div id={tableId}>{asTable || model.kind === 'table' ? table : <ChartView model={model} ariaLabel={ariaLabel} />}</div>
+      <div id={tableId}>{asTable || model.kind === 'table' ? table : <ChartView model={model} ariaLabel={ariaLabel} look={look} />}</div>
     </div>
   );
 }
 
-function ChartView({ model, ariaLabel }: { model: Exclude<ChartModel, { kind: 'empty' } | { kind: 'table' }>; ariaLabel: string }) {
+function ChartView({ model, ariaLabel, look }: { model: Exclude<ChartModel, { kind: 'empty' } | { kind: 'table' }>; ariaLabel: string; look: ChartLook }) {
   if (model.kind === 'kpi') {
     return (
-      <div role="img" aria-label={`${ariaLabel}. ${model.label}: ${formatValue(model.value, model.format)}`} className="rounded-lg border bg-background p-5">
+      <div role="img" aria-label={`${ariaLabel}. ${model.label}: ${formatValue(model.value, model.format)}`} data-kpi className="rounded-lg border bg-background p-5">
         <p className="text-sm text-muted-foreground" aria-hidden>
           {model.label}
         </p>
@@ -145,7 +168,7 @@ function ChartView({ model, ariaLabel }: { model: Exclude<ChartModel, { kind: 'e
   }
 
   if (model.kind === 'pie') return <PieView model={model} ariaLabel={ariaLabel} />;
-  return <CartesianView model={model} ariaLabel={ariaLabel} />;
+  return <CartesianView model={model} ariaLabel={ariaLabel} look={look} />;
 }
 
 function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie' }>; ariaLabel: string }) {
@@ -188,7 +211,10 @@ function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie
   );
 }
 
-function CartesianView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'cartesian' }>; ariaLabel: string }) {
+function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, { kind: 'cartesian' }>; ariaLabel: string; look: ChartLook }) {
+  // The drawn width, for the document look's label column (layout only, never a figure).
+  const [chartWidth, setChartWidth] = useState(0);
+  const documentLabels = look === 'document' && chartWidth > 0;
   const horizontal = model.type === 'bar' && model.orientation === 'horizontal';
   // xLabel comes from the model: formatted, and "(blank)" for a missing key.
   const data = model.data;
@@ -222,14 +248,24 @@ function CartesianView({ model, ariaLabel }: { model: Extract<ChartModel, { kind
     />
   );
   const yAxis = horizontal ? (
-    <YAxis type="category" dataKey="xLabel" width={112} tick={<CategoryTick horizontal />} interval={0} />
+    documentLabels ? (
+      <YAxis
+        type="category"
+        dataKey="xLabel"
+        width={chartWidth * DOCUMENT_LABEL_SHARE}
+        tick={<CategoryTick horizontal wrapAt={(chartWidth * DOCUMENT_LABEL_SHARE) / 6.5} />}
+        interval={0}
+      />
+    ) : (
+      <YAxis type="category" dataKey="xLabel" width={112} tick={<CategoryTick horizontal />} interval={0} />
+    )
   ) : (
     <YAxis tickFormatter={valueTick} tick={AXIS_TICK} width={88} />
   );
 
   return (
     <div role="img" aria-label={ariaLabel} className="w-full" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" onResize={(width) => setChartWidth(width)}>
         {model.type === 'bar' ? (
           <BarChart data={data} layout={horizontal ? 'vertical' : 'horizontal'} margin={{ top: 16, right: horizontal && labelled && !model.stacked ? 104 : 24, left: 4, bottom: 4 }}>
             {grid}

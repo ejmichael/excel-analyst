@@ -48,6 +48,11 @@ interface AnswerCardProps {
   mode?: 'answer' | 'report' | 'public';
   /** Shown instead of the answer's title (a report's heading_override). */
   heading?: string;
+  /**
+   * Charts drawn for a report document (the shared page, or the owner's report while it prints): wider category
+   * labels that wrap to two lines. Colours, borders and spacing follow the document look through CSS.
+   */
+  documentLook?: boolean;
   onFollowUp?: (question: string) => void;
   onDeleted?: (id: string) => void;
 }
@@ -61,6 +66,7 @@ export function AnswerCard({
   asking = false,
   mode = 'answer',
   heading,
+  documentLook = false,
   onFollowUp,
   onDeleted,
 }: AnswerCardProps) {
@@ -73,21 +79,28 @@ export function AnswerCard({
   const failed = block.checks.filter((c) => !c.ok);
 
   return (
-    <article aria-labelledby={headingId} data-print-answer className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
-      <header className="space-y-1">
+    <article
+      aria-labelledby={headingId}
+      data-print-answer
+      // How a printed report may break it: a chart answer stays whole, a table answer may break between rows.
+      data-answer-kind={block.chart.type === 'table' ? 'table' : 'chart'}
+      className="space-y-4 rounded-xl border bg-card p-4 sm:p-5"
+    >
+      <header data-answer-meta className="space-y-1">
         <Heading id={headingId} ref={headingRef} tabIndex={-1} className="text-xl font-semibold break-words outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {heading || block.title}
         </Heading>
-        <p className="text-sm text-muted-foreground break-words">
+        <p data-answer-question className="text-sm text-muted-foreground break-words">
           <span className="sr-only">Question: </span>“{block.question}”
         </p>
-        <p className="text-sm text-muted-foreground">
+        {/* Not on a report document (print or shared page): the report has its own date. */}
+        <p data-answer-time className="text-sm text-muted-foreground">
           <time dateTime={block.created_at}>{formatDateTime(block.created_at)}</time>
         </p>
       </header>
 
       {block.status === 'flagged' ? (
-        <div role="note" className="rounded-lg border border-warning/50 bg-warning-bg p-4">
+        <div role="note" data-flagged-note className="rounded-lg border border-warning/50 bg-warning-bg p-4">
           <div className="flex items-start gap-2">
             <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
             <div className="space-y-2">
@@ -109,22 +122,26 @@ export function AnswerCard({
           </div>
         </div>
       ) : (
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <p data-check-line className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <CircleCheck className="size-4 text-primary" aria-hidden />
           All checks passed.
         </p>
       )}
 
       {/* Plain text: React escapes it, so API text can never become markup. */}
-      <p className="whitespace-pre-line break-words">{block.narrative}</p>
+      <p data-answer-narrative className="whitespace-pre-line break-words">
+        {block.narrative}
+      </p>
 
       {block.truncated && (
-        <p className="text-sm tabular">
+        <p data-answer-caption className="text-sm tabular">
           Showing the first {formatNumber(block.rows.length, 0)} of {formatNumber(block.row_count, 0)} rows.
         </p>
       )}
 
-      <BlockChart block={block} />
+      <div data-answer-figure>
+        <BlockChart block={block} look={documentLook ? 'document' : 'app'} />
+      </div>
 
       {!inReport && onFollowUp && block.follow_ups.length > 0 && (
         <div className="space-y-2">
@@ -139,7 +156,12 @@ export function AnswerCard({
         </div>
       )}
 
-      {hasWorking && <HowCalculated block={block} dataset={dataset} defaultOpen={newest && !inReport} publicView={isPublic} />}
+      {/* Never printed (a closed disclosure is a dead bar on paper); on screen it stays as it is. */}
+      {hasWorking && (
+        <div data-answer-working>
+          <HowCalculated block={block} dataset={dataset} defaultOpen={newest && !inReport} publicView={isPublic} />
+        </div>
+      )}
 
       {!inReport && <AnswerActions block={block} dataset={dataset} onDeleted={onDeleted} />}
     </article>

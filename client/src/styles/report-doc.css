@@ -1,0 +1,400 @@
+/*
+ * The report "document" look (Part 5b): a statement-style report with a heavy brand rule, a big title, a plain
+ * sentence per answer and quiet tables. It applies through the `doc` variant (index.css): in print for every report,
+ * and on screen inside [data-doc] (the shared report page). The signed-in app on screen is not affected.
+ *
+ * Elements are found by data attributes set in the components:
+ *   data-report-root      the report (carries --brand, --brand-mark and --brand-tint, see features/reports/document.ts)
+ *   data-report-header    the masthead; data-brand-band its identity line; data-masthead-* its document-only parts
+ *   data-report-answers   the list of answers
+ *   data-print-answer     one answer; data-answer-meta, -question, -time, -narrative, -caption, -figure, -working
+ *   data-check-line       "All checks passed"; data-flagged-note the "Check the numbers" note
+ *   data-print-table      a result table
+ *   data-closing-note     the note after the last answer
+ * These rules are unlayered, so they win over Tailwind's utilities; inline brand styles need !important.
+ */
+
+[data-closing-note],
+[data-masthead-date],
+[data-masthead-period] {
+  display: none;
+}
+
+[data-report-root] {
+  @variant doc {
+    /* The page's own tokens: paper, ink, muted text and hairlines. Charts and tables read them. */
+    --foreground: #16231f;
+    --muted-foreground: #56625c;
+    --border: #d9d8ce;
+    --card: #ffffff;
+    /* Series colours: the brand (guarded to 3:1 on white) first. */
+    --series-1: var(--brand-mark);
+    --series-2: #e0a100;
+    --series-3: #1b6fa8;
+    --series-4: #c77da5;
+    --series-5: #4fb0e8;
+    --series-6: #8a5a00;
+    color: #16231f;
+    font-family: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.55;
+  }
+}
+
+/* ---------- Masthead ---------- */
+
+[data-report-header] {
+  @variant doc {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
+    box-shadow: none;
+  }
+}
+
+/* The identity line under a full-width brand rule. No text ever sits on the brand colour. */
+[data-report-header] [data-brand-band] {
+  @variant doc {
+    background: transparent !important;
+    color: #16231f !important;
+    border-top: 3.2mm solid var(--brand);
+    min-height: 0;
+    padding: 3.5mm 0 0;
+    display: flex;
+    align-items: center;
+    gap: 3mm;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+[data-brand-band] img {
+  @variant doc {
+    height: auto;
+    max-height: 12mm;
+    max-width: 45mm;
+    object-fit: contain;
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+  }
+}
+
+[data-brand-band] [data-business-name] {
+  @variant doc {
+    font-family: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+    font-size: 10pt;
+    font-weight: 600;
+  }
+}
+
+[data-masthead-date] {
+  @variant doc {
+    display: block;
+    margin-left: auto;
+    font-size: 9pt;
+    color: #56625c;
+    white-space: nowrap;
+  }
+}
+
+[data-masthead-body] {
+  @variant doc {
+    padding: 7mm 0 0;
+  }
+}
+
+[data-report-header] h1 {
+  @variant doc {
+    font-family: 'Space Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 29pt;
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    max-width: 20ch;
+  }
+}
+
+[data-masthead-subtitle],
+[data-masthead-period] {
+  @variant doc {
+    font-size: 13pt;
+    line-height: 1.35;
+    color: #56625c;
+  }
+}
+
+[data-masthead-period] {
+  @variant doc {
+    display: block;
+  }
+}
+
+/* The app's "period · date" line: on the document the period sits under the title and the date on the right. */
+[data-masthead-meta] {
+  @variant doc {
+    display: none;
+  }
+}
+
+[data-masthead-notes] {
+  @variant doc {
+    margin-top: 4mm;
+    max-width: 37em;
+  }
+}
+
+/* ---------- Answers: no cards, a hairline between them ---------- */
+
+[data-report-answers] {
+  @variant doc {
+    margin-top: 9mm;
+  }
+}
+
+[data-report-answers] > li {
+  @variant doc {
+    margin: 0 !important;
+    padding: 7mm 0 0;
+    border-top: 0.75pt solid #d9d8ce;
+  }
+}
+
+[data-report-answers] > li + li {
+  @variant doc {
+    margin-top: 7mm !important;
+  }
+}
+
+[data-report-answers] > li:first-child {
+  @variant doc {
+    border-top: 0;
+    padding-top: 0;
+  }
+}
+
+[data-print-answer] {
+  @variant doc {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3mm;
+  }
+}
+
+/* Flex gap does the spacing; the order puts the warning under the narrative and the check line last. */
+[data-print-answer] > * {
+  @variant doc {
+    margin: 0 !important;
+  }
+}
+
+[data-answer-meta] {
+  @variant doc {
+    order: 1;
+  }
+}
+[data-answer-narrative] {
+  @variant doc {
+    order: 2;
+  }
+}
+[data-flagged-note] {
+  @variant doc {
+    order: 3;
+  }
+}
+[data-answer-caption] {
+  @variant doc {
+    order: 4;
+  }
+}
+[data-answer-figure] {
+  @variant doc {
+    order: 5;
+  }
+}
+[data-check-line] {
+  @variant doc {
+    order: 6;
+  }
+}
+[data-answer-working] {
+  @variant doc {
+    order: 7;
+  }
+}
+
+[data-answer-meta] h2,
+[data-answer-meta] h3 {
+  @variant doc {
+    font-family: 'Space Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 14pt;
+    line-height: 1.25;
+  }
+}
+
+[data-answer-question] {
+  @variant doc {
+    margin-top: 1mm;
+    font-size: 8.5pt;
+    color: #56625c;
+  }
+}
+
+/* The report has its own date; per-answer timestamps are noise on a document. */
+[data-answer-time] {
+  @variant doc {
+    display: none;
+  }
+}
+
+[data-answer-narrative] {
+  @variant doc {
+    font-size: 10.5pt;
+    line-height: 1.55;
+    max-width: 37em;
+  }
+}
+
+[data-answer-caption] {
+  @variant doc {
+    font-size: 8.5pt;
+    color: #56625c;
+  }
+}
+
+[data-check-line] {
+  @variant doc {
+    font-size: 8.5pt;
+    color: #56625c;
+  }
+}
+
+[data-check-line] svg {
+  @variant doc {
+    color: var(--brand-mark);
+  }
+}
+
+/* A failed check stays in words, never softened: an amber rule and dark amber text. */
+[data-flagged-note] {
+  @variant doc {
+    border: 0;
+    border-left: 1.2mm solid #e0a100;
+    border-radius: 0;
+    background: #fff4d6;
+    color: #7a4f00;
+    padding: 2.5mm 3.5mm;
+    font-size: 9pt;
+    max-width: 37em;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+[data-flagged-note] svg {
+  @variant doc {
+    color: #7a4f00;
+  }
+}
+
+/* ---------- Tables: statement style ---------- */
+
+[data-print-table] {
+  @variant doc {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    max-height: none;
+  }
+}
+
+[data-print-table] table {
+  @variant doc {
+    font-size: 8.5pt;
+    border-collapse: collapse;
+  }
+}
+
+[data-print-table] th {
+  @variant doc {
+    position: static;
+    background: var(--brand-tint);
+    color: #16231f;
+    font-size: 8pt;
+    font-weight: 600;
+    border-bottom: 0.75pt solid #16231f;
+    padding: 1.6mm 2mm;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+[data-print-table] tr {
+  @variant doc {
+    border: 0;
+  }
+}
+
+[data-print-table] td {
+  @variant doc {
+    border-bottom: 0.5pt solid #d9d8ce;
+    padding: 1.4mm 2mm;
+  }
+}
+
+/* ---------- Charts ---------- */
+
+[data-answer-figure] svg.recharts-surface,
+[data-answer-figure] .recharts-legend-wrapper,
+[data-answer-figure] [role='img'] {
+  @variant doc {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* ---------- Closing note ---------- */
+
+[data-closing-note] {
+  @variant doc {
+    display: block;
+    margin-top: 10mm;
+    padding-top: 3mm;
+    border-top: 2pt solid #16231f;
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: #56625c;
+  }
+}
+
+/* A single figure: no box, the figure in the heading face under a short label. */
+[data-kpi] {
+  @variant doc {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+  }
+}
+
+[data-kpi] p:last-child {
+  @variant doc {
+    font-size: 26pt;
+    line-height: 1.1;
+  }
+}
+
+[data-flagged-note] * {
+  @variant doc {
+    font-size: inherit;
+    line-height: 1.45;
+  }
+}

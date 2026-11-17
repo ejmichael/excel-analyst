@@ -2,6 +2,20 @@
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/space-grotesk';
 @import './styles/print.css';
+@import './styles/report-doc.css';
+
+/*
+ * The report "document" look (Part 5b): in print for every report, and on screen inside an element marked data-doc
+ * (the shared report page). The signed-in app on screen never matches it.
+ */
+@custom-variant doc {
+  @media print {
+    @slot;
+  }
+  &:where([data-doc], [data-doc] *) {
+    @slot;
+  }
+}
 
 /* Light theme only. Brand tokens live here so the accent can change in one place. */
 :root {

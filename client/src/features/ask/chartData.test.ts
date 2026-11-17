@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Block, ChartSpec, ResultColumn } from '@/api/types';
-import { buildChartModel, columnLabel, formatOf, groupKeyColumns, shortLabel } from './chartData';
+import { buildChartModel, columnLabel, formatOf, groupKeyColumns, shortLabel, wrapLabel } from './chartData';
 
 const spec = (over: Partial<ChartSpec> & Pick<ChartSpec, 'type'>): ChartSpec => ({
   x: null,
@@ -250,5 +250,34 @@ describe('helpers', () => {
   it('shortLabel cuts long labels with an ellipsis', () => {
     expect(shortLabel('Pietermaritzburg Padstal', 10)).toBe('Pietermar…');
     expect(shortLabel('Short', 10)).toBe('Short');
+  });
+});
+
+describe('wrapLabel (category labels on a report document)', () => {
+  it('keeps a short label on one line', () => {
+    expect(wrapLabel('Café Rosé Sandton', 24)).toEqual(['Café Rosé Sandton']);
+  });
+
+  it('wraps between words onto a second line', () => {
+    expect(wrapLabel('Pietermaritzburg Padstal Main Road', 18)).toEqual(['Pietermaritzburg', 'Padstal Main Road']);
+  });
+
+  it('ends with an ellipsis only after two lines', () => {
+    const lines = wrapLabel('Pietermaritzburg Padstal on the old Main Road near the station', 18);
+    expect(lines).toHaveLength(2);
+    expect(lines[1]!.endsWith('…')).toBe(true);
+    expect(lines[1]!.length).toBeLessThanOrEqual(18);
+  });
+
+  it('breaks a long string without spaces, such as a URL, anywhere', () => {
+    const lines = wrapLabel('https://shop.example.co.za/products/biltong-250g', 16);
+    expect(lines[0]).toBe('https://shop.exa');
+    expect(lines).toHaveLength(2);
+    expect(lines.every((l) => l.length <= 16)).toBe(true);
+    expect(lines[1]!.endsWith('…')).toBe(true);
+  });
+
+  it('a label that fits exactly needs no ellipsis', () => {
+    expect(wrapLabel('Cash sales', 10)).toEqual(['Cash sales']);
   });
 });

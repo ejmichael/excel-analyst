@@ -210,8 +210,6 @@ export function HowCalculated({
       <h3 className="font-sans text-base">
         <button
           type="button"
-          // Printed as a closed heading; its content is not printed.
-          data-print="keep"
           aria-expanded={open}
           aria-controls={id}
           onClick={() => setOpen((o) => !o)}
