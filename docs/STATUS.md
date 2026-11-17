@@ -11,7 +11,7 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 | S2 | Ask, verify, source rows | DONE | DONE (tested against the real server) |
 | S3 | Reports and branding | DONE | DONE (tested against the real server 2026-11-13: create, edit, delete, plan limits, branding, workspace rule `block_ids.<i>` / `blocks.<i>.block_id`) |
 | S3b | One-click draft report | DONE | DONE (tested against the real server 2026-11-16: fixtures 01 to 03, 27 to 34 s each; 402, 409 not ready, 409 conflict follows the named run `details.auto_report_id` in any tab) |
-| S4 | Export and share | DONE | DONE (tested against the real server 2026-11-16: PDF by print on A4, Excel export, share links with and without working, public page in a private window, turn off, Free 402 and watermark) |
+| S4 | Export and share | DONE | DONE (tested against the real server 2026-11-16: PDF by print on A4, Excel export, share links with and without working, public page in a private window, turn off, Free 402 and watermark). Part 5b (document look for print and the shared page): DONE, checked 2026-11-17 with page.pdf on A4 (5-answer real report 4 to 3 pages; 3, 30, flagged, light and dark brand, public page at 390px and desktop) |
 | S5 | Templates and re-runs | TODO | TODO |
 | S6 | Plans, billing, hardening, handover | TODO | TODO |
 

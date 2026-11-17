@@ -115,6 +115,47 @@ describe('public report: what is sent and stored', () => {
   });
 });
 
+describe('public report: the document look on screen', () => {
+  it('is a sheet in the document look, with a bar above it holding only Download PDF', async () => {
+    useResponses(() => json(200, { data: makeReport() }));
+    renderAt();
+    const heading = await screen.findByRole('heading', { level: 1, name: 'October review' });
+    const sheet = heading.closest('[data-doc]');
+    expect(sheet).not.toBeNull();
+    expect(sheet!.querySelector('[data-report-root]')).not.toBeNull();
+    const bar = screen.getByRole('button', { name: 'Download PDF' }).closest('[data-print="hide"]')!;
+    expect(within(bar as HTMLElement).getAllByRole('button')).toHaveLength(1);
+    expect(sheet!.contains(bar)).toBe(false);
+  });
+
+  it('the closing note has the watermark but not the owner’s Excel sentence; timestamps are marked to be left out', async () => {
+    useResponses(() => json(200, { data: makeReport() }));
+    renderAt();
+    await screen.findByRole('heading', { level: 1, name: 'October review' });
+    const note = document.querySelector('[data-closing-note]')!;
+    expect(note).toHaveTextContent('Check important figures against your source file.');
+    expect(note).toHaveTextContent('Made with Analyst');
+    expect(note).not.toHaveTextContent('Excel');
+    expect(document.querySelectorAll('[data-answer-time]')).toHaveLength(2);
+  });
+
+  it('without a watermark, the closing note has no "Made with" line', async () => {
+    useResponses(() => json(200, { data: makeReport({ watermark: false }) }));
+    renderAt();
+    await screen.findByRole('heading', { level: 1, name: 'October review' });
+    expect(screen.queryByText(/Made with/)).not.toBeInTheDocument();
+  });
+
+  it('a flagged answer shows its warning in place of the passed line', async () => {
+    useResponses(() => json(200, { data: makeReport() }));
+    renderAt();
+    const [passed, flagged] = await screen.findAllByRole('article');
+    expect(flagged!.querySelector('[data-flagged-note]')).toHaveTextContent('Check the numbers');
+    expect(flagged!.querySelector('[data-check-line]')).toBeNull();
+    expect(passed!.querySelector('[data-check-line]')).toHaveTextContent('All checks passed.');
+  });
+});
+
 describe('public report: what is shown', () => {
   it('shows the brand header, the answers and the watermark, without any owner control', async () => {
     useResponses(() => json(200, { data: makeReport() }));

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CircleAlert, LinkIcon } from 'lucide-react';
+import { CircleAlert } from 'lucide-react';
 import { PublicReportError, getPublicReport, type PublicReportFailure } from '@/api/publicReports';
 import type { Block, PublicReport } from '@/api/types';
 import { InlineLoading } from '@/components/PageStatus';
@@ -74,20 +74,32 @@ export function PublicReportPage() {
   };
 
   return (
-    <div data-print-shell className="min-h-dvh bg-background">
-      <main className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-8">
-        {query.isPending ? (
+    // A warm grey desk with the report as a white A4-width sheet on it (white and edge to edge in print).
+    <div data-print-shell className="min-h-dvh bg-[#E9E8E1]">
+      {query.isPending ? (
+        <main className="mx-auto max-w-[210mm] px-4 py-6">
           <InlineLoading label="Loading the report" />
-        ) : query.isError ? (
+        </main>
+      ) : query.isError ? (
+        <main className="mx-auto max-w-[210mm] px-4 py-10">
           <Unavailable
             failure={query.error instanceof PublicReportError ? query.error.failure : { kind: 'error' }}
             onRetry={() => void query.refetch()}
             retrying={query.isFetching}
           />
-        ) : (
-          <SharedReport report={query.data} onLogoError={onLogoError} logoHidden={logoAttempts >= 2} />
-        )}
-      </main>
+        </main>
+      ) : (
+        <div className="mx-auto max-w-[210mm] pb-10 sm:px-6 sm:pt-6">
+          {/* The slim bar: only Download PDF. */}
+          <div data-print="hide" className="flex justify-end px-4 py-3 sm:px-0">
+            <DownloadPdfButton />
+          </div>
+          {/* data-doc: the document look on screen (styles/report-doc.css). */}
+          <main data-doc className="bg-white px-4 py-6 sm:px-[16mm] sm:py-[18mm] sm:shadow-[0_1px_2px_rgba(22,35,31,0.08),0_8px_28px_rgba(22,35,31,0.10)]">
+            <SharedReport report={query.data} onLogoError={onLogoError} logoHidden={logoAttempts >= 2} />
+          </main>
+        </div>
+      )}
     </div>
   );
 }
@@ -96,14 +108,6 @@ function SharedReport({ report, onLogoError, logoHidden }: { report: PublicRepor
   return (
     <div className="space-y-6" data-report-root style={documentVars(report.brand)}>
       <RunningFooter title={report.title} businessName={report.brand.business_name} />
-      <div className="flex flex-wrap items-start justify-between gap-3" data-print="hide">
-        <p className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground">
-          <LinkIcon className="size-4" aria-hidden />
-          A report shared with you
-        </p>
-        <DownloadPdfButton />
-      </div>
-
       <ReportHeader
         brand={report.brand}
         title={report.title}
