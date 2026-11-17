@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowLeft, ArrowUp, LayoutTemplate, Pencil, Plus, Share2, Trash2, X } from 'lucide-react';
@@ -95,6 +95,68 @@ function useDatasetStates(datasetIds: Array<ID | null>): Map<ID, DatasetState> {
 
 const DELETED: DatasetState = { exists: false, status: null, expires_at: null, columns: [] };
 
+/** Space kept between the last field and the fixed edit bar. */
+export const EDIT_BAR_GAP = 16;
+
+export const REPORT_FULL = `A report holds at most ${MAX_REPORT_BLOCKS} answers. Remove one to add another.`;
+
+/**
+ * The fixed edit bar's height, kept up to date (it grows with messages and wraps on phones). While editing, the page
+ * also scrolls focused fields clear of it (scroll-padding-bottom), which covers the phone keyboard case.
+ */
+function useBarHeight(ref: RefObject<HTMLDivElement | null>, active: boolean): number {
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    const bar = ref.current;
+    if (!active || !bar) return;
+    const measure = () => setHeight(bar.offsetHeight);
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(bar);
+    return () => observer?.disconnect();
+  }, [ref, active]);
+  useEffect(() => {
+    if (!active) return;
+    const root = document.documentElement;
+    root.style.scrollPaddingBottom = `${height + EDIT_BAR_GAP}px`;
+    return () => {
+      root.style.scrollPaddingBottom = '';
+    };
+  }, [active, height]);
+  return height;
+}
+
+/** The file most of the report's answers come from (counting answers, not figures): the picker opens on it. */
+export function mainDatasetId(draft: ReportDraft): ID | undefined {
+  const counts = new Map<ID, number>();
+  for (const b of draft.blocks) if (b.block.dataset_id) counts.set(b.block.dataset_id, (counts.get(b.block.dataset_id) ?? 0) + 1);
+  let best: ID | undefined;
+  for (const [id, n] of counts) if (best === undefined || n > (counts.get(best) ?? 0)) best = id;
+  return best;
+}
+
+/** "Add an answer" with the count; at the limit it is disabled and says why. */
+function AddAnswerButton({ count, onAdd }: { count: number; onAdd: () => void }) {
+  const full = count >= MAX_REPORT_BLOCKS;
+  const reasonId = useId();
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <Button variant="outline" onClick={onAdd} disabled={full} aria-describedby={full ? reasonId : undefined}>
+        <Plus aria-hidden />
+        Add an answer
+      </Button>
+      <span className="text-sm text-muted-foreground tabular">
+        {formatNumber(count, 0)} of {formatNumber(MAX_REPORT_BLOCKS, 0)} answers
+      </span>
+      {full && (
+        <span id={reasonId} className="text-sm">
+          {REPORT_FULL}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function ReportView({ report }: { report: ReportDetail }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -106,6 +168,8 @@ function ReportView({ report }: { report: ReportDetail }) {
   /** Answers the server refused on save (the workspace rule), with its message for each: highlighted in the list. */
   const [refused, setRefused] = useState<Record<ID, string>>({});
   const [adding, setAdding] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
+  const barHeight = useBarHeight(barRef, editing);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [logoAttempts, setLogoAttempts] = useState(0);
@@ -191,7 +255,12 @@ function ReportView({ report }: { report: ReportDetail }) {
 
   return (
     // The report root carries the brand for the document look, which applies when it prints (styles/report-doc.css).
-    <div className="space-y-6" data-report-root style={documentVars(report.brand)}>
+    <div
+      className="space-y-6"
+      data-report-root
+      // While editing, room below the last answer for the fixed bar, so nothing stays under it.
+      style={{ ...documentVars(report.brand), ...(editing ? { paddingBottom: barHeight + EDIT_BAR_GAP } : {}) }}
+    >
       <RunningFooter title={report.title} businessName={report.brand.business_name} />
       {showDraftBanner && (
         <DraftBanner
@@ -341,17 +410,25 @@ function ReportView({ report }: { report: ReportDetail }) {
       </ol>
 
       {editing && (
-        <div data-print="hide" className="sticky bottom-2 z-10 space-y-3 rounded-xl border border-primary/40 bg-card p-4 shadow-md">
+        // Adding is obvious: at the end of the answers too, not only in the bar.
+        <div data-print="hide" className="rounded-xl border border-dashed bg-card p-4">
+          <AddAnswerButton count={draft.blocks.length} onAdd={() => setAdding(true)} />
+        </div>
+      )}
+
+      {editing && (
+        // Fixed at the bottom of the window; the report keeps room for it (bottom padding and scroll padding).
+        <div
+          ref={barRef}
+          data-edit-bar
+          data-print="hide"
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-primary/40 bg-card shadow-[0_-4px_16px_rgba(22,35,31,0.08)] md:left-60"
+        >
+          <div className="mx-auto max-w-4xl space-y-2 px-4 py-3 sm:px-8">
           {errors.blocks && <FormMessage>{errors.blocks}</FormMessage>}
           {saveMessage && <FormMessage>{saveMessage}</FormMessage>}
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => setAdding(true)} disabled={draft.blocks.length >= MAX_REPORT_BLOCKS}>
-              <Plus aria-hidden />
-              Add answers
-            </Button>
-            <span className="text-sm text-muted-foreground tabular">
-              {formatNumber(draft.blocks.length, 0)} of {formatNumber(MAX_REPORT_BLOCKS, 0)} answers
-            </span>
+            <AddAnswerButton count={draft.blocks.length} onAdd={() => setAdding(true)} />
             <span className="flex-1" />
             <Button variant="outline" onClick={() => setEditing(false)}>
               Cancel
@@ -363,6 +440,7 @@ function ReportView({ report }: { report: ReportDetail }) {
           <p className="text-sm text-muted-foreground" aria-live="polite">
             {patch ? 'You have unsaved changes.' : 'No changes yet.'}
           </p>
+          </div>
         </div>
       )}
 
@@ -406,9 +484,12 @@ function ReportView({ report }: { report: ReportDetail }) {
         </DialogContent>
       </Dialog>
 
+      {/* Mounted only while open: it loads files, answers and the question quota when needed. */}
+      {adding && (
       <AddAnswersDialog
-        open={adding}
+        open
         workspaceId={report.workspace_id}
+        defaultDatasetId={mainDatasetId(draft)}
         memberIds={new Set(draft.blocks.map((b) => b.block_id))}
         onClose={() => setAdding(false)}
         onAdd={(blocks) =>
@@ -418,6 +499,7 @@ function ReportView({ report }: { report: ReportDetail }) {
           }))
         }
       />
+      )}
 
       <Dialog open={confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(false)}>
         <DialogContent>

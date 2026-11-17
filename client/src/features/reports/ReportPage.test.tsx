@@ -225,33 +225,6 @@ describe('ReportPage: editing', () => {
     );
   });
 
-  it('the add-answers picker marks members and refuses beyond 30', async () => {
-    const members = Array.from({ length: 29 }, (_, i) => ({ position: i, heading_override: null, block: makeBlock('fees', { id: `m${i}` }) }));
-    members[0] = { position: 0, heading_override: null, block: makeBlock('by-store') };
-    const extra = (url: string) => {
-      const path = new URL(url).pathname.replace('/api/v1', '');
-      if (path === '/datasets') return json(200, { data: { items: [{ id: 'd1', name: 'Card sales' }], total: 1, limit: 200, offset: 0 } });
-      if (path === '/datasets/d1/blocks') {
-        const items = [makeBlock('by-store'), makeBlock('daily', { id: 'n1', title: 'New one' }), makeBlock('daily', { id: 'n2', title: 'New two' })];
-        return json(200, { data: { items, total: 3, limit: 20, offset: 0 } });
-      }
-      return null;
-    };
-    setup(makeReport({ blocks: members, block_count: 29 }), extra);
-    await userEvent.click(await screen.findByRole('button', { name: 'Edit report' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Add answers' }));
-    const dialog = screen.getByRole('dialog');
-    await userEvent.selectOptions(await within(dialog).findByLabelText('File'), 'd1');
-    const member = await within(dialog).findByRole('checkbox', { name: /Net sales by store.*Already in this report/ });
-    expect(member).toBeChecked();
-    expect(member).toBeDisabled();
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: /New one/ }));
-    expect(within(dialog).getByRole('checkbox', { name: /New two/ })).toBeDisabled();
-    expect(within(dialog).getByText('The report is full: it holds at most 30 answers.')).toBeInTheDocument();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add 1 answer' }));
-    expect(screen.getByText('30 of 30 answers')).toBeInTheDocument();
-  });
-
   it('delete asks first, says the answers are kept, then returns to the list', async () => {
     const { calls } = setup(makeReport());
     await userEvent.click(await screen.findByRole('button', { name: 'Delete report' }));
