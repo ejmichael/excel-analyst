@@ -1,15 +1,19 @@
 import { z } from 'zod';
-import type { PlanLimitDetails, PublicReport, ShareLink } from '../types';
+import type { PlanLimitDetails, PublicReport, ShareLink, ValidationFailedDetails } from '../types';
 import { MOCK_PLAN_LIMITS, cheapestPlanAllowing, sastTimestamp, type MockUser } from './data';
 import { reportDetail, reportsOf } from './reports';
 import { MOCK_XLSX_BASE64 } from './xlsxFixture';
 
 /**
  * Mock export and share links (S4), following the contract and the server's S4 notes. Variants (client/README.md):
- * a report titled with "busy" answers the Excel export with 429 and Retry-After; links made on a report titled with
+ * a report titled with "busy" answers the Excel export with 429 and Retry-After, one titled with "huge" with the 422
+ * for a report too large to export; links made on a report titled with
  * "expired" are already expired; a report titled with "personal", or an answer with a column such as email, phone or
  * customer, is flagged contains_personal_data. The public token "busy" answers 429.
  */
+
+/** The server's message for a report too large to export (422, reason export_too_large). */
+const EXPORT_TOO_LARGE = 'This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again.';
 
 type Result = { status: number; body?: unknown; raw?: Response };
 const ok = (data: unknown, status = 200): Result => ({ status, body: { data } });
@@ -109,6 +113,14 @@ export function routeSharing(method: string, path: string, user: MockUser, body:
     if (!report) return fail(404, 'not_found', 'Report not found.');
     if (/busy/i.test(report.report.title)) {
       return { status: 429, raw: new Response(JSON.stringify({ error: { code: 'rate_limited', message: 'Too many exports.' } }), { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '12' } }) };
+    }
+    // Mock variant "huge": the server's body for a report too large to export.
+    if (/huge/i.test(report.report.title)) {
+      const details: ValidationFailedDetails = {
+        fields: [{ location: 'params', path: 'id', message: EXPORT_TOO_LARGE }],
+        reason: 'export_too_large',
+      };
+      return fail(422, 'validation_failed', EXPORT_TOO_LARGE, details);
     }
     const bytes = Uint8Array.from(atob(MOCK_XLSX_BASE64), (c) => c.charCodeAt(0));
     const filename = `${slug(report.report.title)}-${sastTimestamp().slice(0, 10)}.xlsx`;

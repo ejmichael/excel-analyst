@@ -38,6 +38,7 @@ export interface ApiError {
 /** details of a 422 validation_failed (absent for malformed JSON or bodies over 100 KB). */
 export interface ValidationFailedDetails {
   fields: Array<{ location: 'body' | 'query' | 'params'; path: string; message: string }>;
+  reason?: 'export_too_large'; // only on GET /reports/:id/export.xlsx when the report is too large to export; absent everywhere else
 }
 
 export interface Paged<T> {

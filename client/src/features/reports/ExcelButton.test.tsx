@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { configureApiClient, type Transport } from '@/api/client';
+import { configureApiClient, type ApiError, type Transport } from '@/api/client';
 import { isoDateInSast } from '@/lib/format';
-import { ExcelButton, downloadReportExcel } from './ExcelButton';
+import { ExcelButton, TOO_LARGE_FALLBACK, describeExcelError, downloadReportExcel, isExportTooLarge } from './ExcelButton';
 
 const saved: Array<{ name: string; size: number }> = [];
 vi.mock('@/lib/download', async (original) => ({
@@ -63,12 +63,11 @@ describe('Download Excel', () => {
     [409, 'conflict', {}, 'This report cannot be downloaded right now. Reload the page and try again.'],
     [429, 'rate_limited', { 'Retry-After': '12' }, 'Other downloads are being prepared. Wait 12 seconds and try again.'],
     [502, 'llm_failed', {}, 'The Excel file could not be prepared just now. Please try again.'],
-    [500, 'internal', {}, 'This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again.'],
   ])('%s is said in words, and the button is never left busy', async (status, code, headers, message) => {
     useTransport(() =>
       json(
         status,
-        { error: { code, message: status === 500 ? message : 'server text', ...(status === 402 ? { details: { limit_key: 'share_links', limit: 0, used: 0, upgrade_to: 'solo' } } : {}) } },
+        { error: { code, message: 'server text', ...(status === 402 ? { details: { limit_key: 'share_links', limit: 0, used: 0, upgrade_to: 'solo' } } : {}) } },
         headers,
       ),
     );
@@ -77,6 +76,59 @@ describe('Download Excel', () => {
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download Excel' })).toBeEnabled();
     expect(saved).toEqual([]);
+  });
+
+  describe('a report too large to export (422 validation_failed, reason export_too_large)', () => {
+    const TOO_LARGE = 'This report is too large to export to Excel. Remove some answers or ask for fewer rows, then try again.';
+    const clickAndRead = async () => {
+      render(<ExcelButton report={report} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Download Excel' }));
+      const alert = await screen.findByRole('alert');
+      expect(screen.getByRole('button', { name: 'Download Excel' })).toBeEnabled();
+      expect(saved).toEqual([]);
+      return alert;
+    };
+
+    it('the server’s exact body shows its message', async () => {
+      // The body from server commit 5e1cdfd.
+      const body = {
+        error: {
+          code: 'validation_failed',
+          message: TOO_LARGE,
+          details: { fields: [{ location: 'params', path: 'id', message: TOO_LARGE }], reason: 'export_too_large' },
+        },
+      };
+      useTransport(() => json(422, body));
+      const error = await downloadReportExcel(report).then(() => null, (e: unknown) => e as ApiError);
+      expect(isExportTooLarge(error!)).toBe(true);
+      expect(describeExcelError(error)).toBe(TOO_LARGE);
+      expect(await clickAndRead()).toHaveTextContent(TOO_LARGE);
+    });
+
+    it('falls back to its own words if that 422 has no message', async () => {
+      useTransport(() => json(422, { error: { code: 'validation_failed', message: '', details: { fields: [], reason: 'export_too_large' } } }));
+      expect(await clickAndRead()).toHaveTextContent(TOO_LARGE_FALLBACK);
+    });
+
+    it.each([
+      ['no reason', { fields: [{ location: 'params', path: 'id', message: 'Not valid.' }] }],
+      ['an unknown reason', { fields: [], reason: 'something_else' }],
+      ['no details', undefined],
+      ['details that are not an object', 'oops'],
+      ['null details', null],
+    ])('another 422 (%s) is not "too large": the server’s message is shown as a written error', async (_name, details) => {
+      useTransport(() => json(422, { error: { code: 'validation_failed', message: 'This report cannot be exported as it is.', ...(details === undefined ? {} : { details }) } }));
+      const error = await downloadReportExcel(report).then(() => null, (e: unknown) => e as ApiError);
+      expect(isExportTooLarge(error!)).toBe(false);
+      expect(await clickAndRead()).toHaveTextContent('This report cannot be exported as it is.');
+    });
+
+    it('the old 500 with the same text is no longer special: the generic message', async () => {
+      useTransport(() => json(500, { error: { code: 'internal', message: TOO_LARGE } }));
+      const alert = await clickAndRead();
+      expect(alert).not.toHaveTextContent(TOO_LARGE);
+      expect(alert).toHaveTextContent('Something went wrong on our side. Please try again.');
+    });
   });
 
   it('a network failure is said in words too', async () => {

@@ -50,6 +50,18 @@ describe('mock export and sharing (S4)', () => {
     expect([bytes[0], bytes[1]]).toEqual([0x50, 0x4b]);
   });
 
+  it('a report titled with "huge" answers the export with the server’s 422 too-large body', async () => {
+    const huge = await createReport({ workspace_id: workspaceId, title: 'huge report', block_ids: blockIds.slice(0, 1) });
+    const error = (await caught(downloadReportXlsx(huge.id))) as ApiError;
+    expect(error.status).toBe(422);
+    expect(error.code).toBe('validation_failed');
+    expect(error.details).toEqual({
+      fields: [{ location: 'params', path: 'id', message: error.serverMessage }],
+      reason: 'export_too_large',
+    });
+    expect(error.serverMessage).toMatch(/^This report is too large to export to Excel\./);
+  });
+
   it('creates, lists (newest first) and turns off links; turning off twice keeps the first time', async () => {
     const first = await createShareLink(reportId, { expires_in_days: 7 });
     const second = await createShareLink(reportId, { show_working: true });
