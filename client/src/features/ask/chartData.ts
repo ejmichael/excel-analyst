@@ -224,3 +224,21 @@ export function wrapLabel(text: string, max: number, lines = 2): string[] {
   kept[lines - 1] = `${last.length >= width ? last.slice(0, width - 1) : last}…`;
   return kept;
 }
+
+/** The value axis' default tick count. */
+export const VALUE_TICKS = 5;
+
+/**
+ * How the value axis takes its ticks from the chart library's scale. On a whole-number axis (integer format, or
+ * every plotted value whole) ticks are whole: no fractional tick is drawn and rounded into a wrong label. A small
+ * whole range starting at 0 (top value 4 or less, not stacked) gets one tick per whole number, so 0 to 3 reads
+ * 0, 1, 2, 3. Nothing is calculated: the values are only read to choose these options.
+ */
+export function valueAxis(model: Extract<ChartModel, { kind: 'cartesian' }>): { allowDecimals: boolean; tickCount: number } {
+  const values = model.data.flatMap((row) => model.series.map((s) => toNumeric(row[s.key] ?? null))).filter((v): v is number => v !== null);
+  const whole = model.series.every((s) => s.format === 'integer') || (values.length > 0 && values.every((v) => Number.isInteger(v)));
+  if (!whole) return { allowDecimals: true, tickCount: VALUE_TICKS };
+  const top = values.length > 0 ? Math.max(...values) : 0;
+  const smallRange = !model.stacked && values.every((v) => v >= 0) && top >= 1 && top <= VALUE_TICKS - 1;
+  return { allowDecimals: false, tickCount: smallRange ? top + 1 : VALUE_TICKS };
+}

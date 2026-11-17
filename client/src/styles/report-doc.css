@@ -27,13 +27,17 @@
     --muted-foreground: #56625c;
     --border: #d9d8ce;
     --card: #ffffff;
-    /* Series colours: the brand (guarded to 3:1 on white) first. */
-    --series-1: var(--brand-mark);
-    --series-2: #e0a100;
-    --series-3: #1b6fa8;
-    --series-4: #c77da5;
-    --series-5: #4fb0e8;
-    --series-6: #8a5a00;
+    /* Series colours: the brand (guarded to 3:1 on white) first, then clearly different ones (features/reports/document.ts). */
+    --series-1: var(--doc-series-1);
+    --series-2: var(--doc-series-2);
+    --series-3: var(--doc-series-3);
+    --series-4: var(--doc-series-4);
+    --series-5: var(--doc-series-5);
+    --series-6: var(--doc-series-6);
+    --series-7: var(--doc-series-7);
+    --series-8: var(--doc-series-8);
+    --series-9: var(--doc-series-9);
+    --series-10: var(--doc-series-10);
     color: #16231f;
     font-family: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
     font-size: 10.5pt;

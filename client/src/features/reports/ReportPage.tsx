@@ -333,7 +333,7 @@ function ReportView({ report }: { report: ReportDetail }) {
                 dataset={dataset}
                 mode="report"
                 heading={item.heading.trim() || undefined}
-                documentLook={printing}
+                chartLook={printing ? 'print' : 'app'}
               />
             </li>
           );

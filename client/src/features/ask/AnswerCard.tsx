@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { saveBlob, slugify } from '@/lib/download';
 import { formatDateTime, formatNumber, isoDateInSast } from '@/lib/format';
 import { AddToReportButton } from '@/features/reports/AddToReportButton';
-import { BlockChart } from './BlockChart';
+import { BlockChart, type ChartLook } from './BlockChart';
 import { HowCalculated, type DatasetState } from './HowCalculated';
 import { useBlockFeedback, useDeleteBlock } from './queries';
 
@@ -49,10 +49,10 @@ interface AnswerCardProps {
   /** Shown instead of the answer's title (a report's heading_override). */
   heading?: string;
   /**
-   * Charts drawn for a report document (the shared page, or the owner's report while it prints): wider category
-   * labels that wrap to two lines. Colours, borders and spacing follow the document look through CSS.
+   * How the chart is drawn: 'document' on the shared page, 'print' while a report prints (page width and height).
+   * Colours, borders and spacing follow the document look through CSS.
    */
-  documentLook?: boolean;
+  chartLook?: ChartLook;
   onFollowUp?: (question: string) => void;
   onDeleted?: (id: string) => void;
 }
@@ -66,7 +66,7 @@ export function AnswerCard({
   asking = false,
   mode = 'answer',
   heading,
-  documentLook = false,
+  chartLook = 'app',
   onFollowUp,
   onDeleted,
 }: AnswerCardProps) {
@@ -140,7 +140,7 @@ export function AnswerCard({
       )}
 
       <div data-answer-figure>
-        <BlockChart block={block} look={documentLook ? 'document' : 'app'} />
+        <BlockChart block={block} look={chartLook} />
       </div>
 
       {!inReport && onFollowUp && block.follow_ups.length > 0 && (

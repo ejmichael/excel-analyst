@@ -71,7 +71,8 @@ describe('the document look applies in print and on the shared page only', () =>
   });
 
   it('marks use the guarded brand colour; the table header uses the tint with an ink rule', () => {
-    expect(docRule('[data-report-root]')).toMatch(/--series-1:\s*var\(--brand-mark\)/);
+    // Series colours come from documentVars: the brand mark first, then clearly different ones.
+    expect(docRule('[data-report-root]')).toMatch(/--series-1:\s*var\(--doc-series-1\)/);
     expect(docRule('[data-check-line] svg')).toMatch(/color:\s*var\(--brand-mark\)/);
     const th = docRule('[data-print-table] th');
     expect(th).toMatch(/background:\s*var\(--brand-tint\)/);

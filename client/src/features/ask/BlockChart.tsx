@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { cloneElement, useId, useMemo, useState, type ReactElement } from 'react';
 import {
   Area,
   AreaChart,
@@ -21,8 +21,8 @@ import { BarChart3, Table2 } from 'lucide-react';
 import type { Block, ValueFormat } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { formatNumber, formatValue } from '@/lib/format';
-import { buildChartModel, formatOf, groupKeyColumns, shortLabel, wrapLabel, type ChartModel } from './chartData';
-import { colourAt, dashAt } from './chartPalette';
+import { buildChartModel, formatOf, groupKeyColumns, shortLabel, valueAxis, wrapLabel, type ChartModel } from './chartData';
+import { SERIES_COLOURS, colourAt, dashAt, fillAt, hatchId, isHatched, swatchAt } from './chartPalette';
 import { ResultTable } from './ResultTable';
 
 const TYPE_NAMES: Record<ChartModel['kind'] | 'bar' | 'line' | 'area', string> = {
@@ -103,8 +103,44 @@ function CategoryTick(props: {
   );
 }
 
-/** 'document': a report document (the shared page, or the owner's report while it prints). */
-export type ChartLook = 'app' | 'document';
+/**
+ * 'document': the shared report page on screen. 'print': a report while it prints, drawn at the A4 content width with
+ * a height that lets two chart answers share a page.
+ */
+export type ChartLook = 'app' | 'document' | 'print';
+
+/** CSS pixels per millimetre (96 dpi). */
+const PX_PER_MM = 96 / 25.4;
+
+/** A4 (210mm) less the 16mm side margins of a printed report. */
+export const PRINT_CHART_WIDTH = 178 * PX_PER_MM;
+
+/**
+ * A printed chart's height: about 5mm per category for horizontal bars (plus room for the axis), at most 95mm; a
+ * vertical bar, line or area chart at most 75mm. Layout only.
+ */
+export function printChartHeight(horizontal: boolean, categories: number): number {
+  return horizontal ? Math.min(95, categories * 5 + 16) * PX_PER_MM : 75 * PX_PER_MM;
+}
+
+/** An id usable in url(#…): React's ids contain characters that are not. */
+const svgId = (id: string) => `c${id.replace(/[^a-zA-Z0-9]/g, '')}`;
+
+/** Hatch patterns for series past the tenth: a palette colour with white diagonal stripes at a different angle each. */
+function HatchDefs({ chartId, count }: { chartId: string; count: number }) {
+  const hatched = Array.from({ length: count }, (_, i) => i).filter(isHatched);
+  if (hatched.length === 0) return null;
+  return (
+    <defs>
+      {hatched.map((i) => (
+        <pattern key={i} id={hatchId(chartId, i)} patternUnits="userSpaceOnUse" width={6} height={6} patternTransform={`rotate(${45 + (i - SERIES_COLOURS) * 35})`}>
+          <rect width={6} height={6} fill={colourAt(i)} />
+          <line x1={0} y1={0} x2={0} y2={6} stroke="#ffffff" strokeWidth={2} />
+        </pattern>
+      ))}
+    </defs>
+  );
+}
 
 /** On a report document, the category labels of horizontal bars get about this share of the chart's width. */
 export const DOCUMENT_LABEL_SHARE = 0.36;
@@ -172,11 +208,13 @@ function ChartView({ model, ariaLabel, look }: { model: Exclude<ChartModel, { ki
 }
 
 function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie' }>; ariaLabel: string }) {
+  const chartId = svgId(useId());
   return (
     <div className="space-y-3">
       <div role="img" aria-label={ariaLabel} className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
+            <HatchDefs chartId={chartId} count={model.slices.length} />
             <Pie
               data={model.slices}
               dataKey="value"
@@ -188,7 +226,7 @@ function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie
               isAnimationActive={false}
             >
               {model.slices.map((s, i) => (
-                <Cell key={s.name} fill={colourAt(i)} />
+                <Cell key={s.name} fill={fillAt(chartId, i)} />
               ))}
             </Pie>
             <Tooltip formatter={(v) => formatValue(v as number, model.format)} />
@@ -199,7 +237,7 @@ function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie
       <ul className="grid gap-1.5 text-sm sm:grid-cols-2">
         {model.slices.map((s, i) => (
           <li key={s.name} className="flex items-center gap-2">
-            <span className="size-3 shrink-0 rounded-sm" style={{ background: colourAt(i) }} aria-hidden />
+            <span className="size-3 shrink-0 rounded-sm" style={{ background: swatchAt(i) }} aria-hidden />
             <span className="min-w-0 flex-1 truncate" title={s.label}>
               {s.label}
             </span>
@@ -213,15 +251,23 @@ function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie
 
 function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, { kind: 'cartesian' }>; ariaLabel: string; look: ChartLook }) {
   // The drawn width, for the document look's label column (layout only, never a figure).
-  const [chartWidth, setChartWidth] = useState(0);
-  const documentLabels = look === 'document' && chartWidth > 0;
+  const [measuredWidth, setChartWidth] = useState(0);
+  const printing = look === 'print';
+  const chartId = svgId(useId());
+  // In print the chart is drawn at the page's content width, not the screen's.
+  const chartWidth = printing ? PRINT_CHART_WIDTH : measuredWidth;
+  const documentLabels = look !== 'app' && chartWidth > 0;
   const horizontal = model.type === 'bar' && model.orientation === 'horizontal';
   // xLabel comes from the model: formatted, and "(blank)" for a missing key.
   const data = model.data;
   const labelled = data.length * model.series.length <= MAX_LABELLED_VALUES;
   const firstFormat: ValueFormat = model.series[0]?.format ?? 'number';
   const valueTick = (v: number) => formatValue(v, firstFormat);
-  const height = horizontal ? Math.max(240, data.length * 36 + 60) : 300;
+  const height = printing ? printChartHeight(horizontal, data.length) : horizontal ? Math.max(240, data.length * 36 + 60) : 300;
+  // Ticks from the chart library's scale: whole numbers only on a whole-number axis (see valueAxis).
+  const axis = valueAxis(model);
+  // On a report document bars keep a sensible thickness rather than filling the band.
+  const maxBarSize = look === 'app' ? undefined : horizontal ? 18 : 56;
   const formatFor = (key: string) => model.series.find((s) => s.key === key)?.format ?? firstFormat;
   const tooltip = (
     <Tooltip
@@ -238,7 +284,7 @@ function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, 
   const stackId = model.stacked ? 'stack' : undefined;
 
   const xAxis = horizontal ? (
-    <XAxis type="number" tickFormatter={valueTick} tick={AXIS_TICK} />
+    <XAxis type="number" tickFormatter={valueTick} tick={AXIS_TICK} allowDecimals={axis.allowDecimals} tickCount={axis.tickCount} />
   ) : (
     <XAxis
       dataKey="xLabel"
@@ -260,21 +306,20 @@ function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, 
       <YAxis type="category" dataKey="xLabel" width={112} tick={<CategoryTick horizontal />} interval={0} />
     )
   ) : (
-    <YAxis tickFormatter={valueTick} tick={AXIS_TICK} width={88} />
+    <YAxis tickFormatter={valueTick} tick={AXIS_TICK} width={88} allowDecimals={axis.allowDecimals} tickCount={axis.tickCount} />
   );
 
-  return (
-    <div role="img" aria-label={ariaLabel} className="w-full" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%" onResize={(width) => setChartWidth(width)}>
-        {model.type === 'bar' ? (
+  const chart: ReactElement<{ width?: number; height?: number }> =
+        model.type === 'bar' ? (
           <BarChart data={data} layout={horizontal ? 'vertical' : 'horizontal'} margin={{ top: 16, right: horizontal && labelled && !model.stacked ? 104 : 24, left: 4, bottom: 4 }}>
             {grid}
             {xAxis}
             {yAxis}
             {tooltip}
             {legend}
+            <HatchDefs chartId={chartId} count={model.series.length} />
             {model.series.map((s, i) => (
-              <Bar key={s.key} dataKey={s.key} name={s.label} fill={colourAt(i)} stackId={stackId} isAnimationActive={false}>
+              <Bar key={s.key} dataKey={s.key} name={s.label} fill={fillAt(chartId, i)} stackId={stackId} maxBarSize={maxBarSize} isAnimationActive={false}>
                 {labelled && !model.stacked && (
                   <LabelList
                     dataKey={s.key}
@@ -318,13 +363,14 @@ function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, 
             {yAxis}
             {tooltip}
             {legend}
+            <HatchDefs chartId={chartId} count={model.series.length} />
             {model.series.map((s, i) => (
               <Area
                 key={s.key}
                 dataKey={s.key}
                 name={s.label}
                 stroke={colourAt(i)}
-                fill={colourAt(i)}
+                fill={fillAt(chartId, i)}
                 fillOpacity={0.2}
                 strokeWidth={2}
                 strokeDasharray={dashAt(i)}
@@ -334,8 +380,18 @@ function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, 
               />
             ))}
           </AreaChart>
-        )}
-      </ResponsiveContainer>
+        );
+
+  return (
+    <div role="img" aria-label={ariaLabel} className="w-full" style={{ height }}>
+      {printing ? (
+        // In print: drawn at the page's content width and the print height (no screen measurement).
+        cloneElement(chart, { width: chartWidth, height })
+      ) : (
+        <ResponsiveContainer width="100%" height="100%" onResize={(width) => setChartWidth(width)}>
+          {chart}
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }

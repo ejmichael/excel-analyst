@@ -108,3 +108,40 @@ export function tintColour(hex: string, amount: number): string {
   const rgb = toRgb(hex);
   return toHex(rgb.map((c) => 255 + (c - 255) * amount) as [number, number, number]);
 }
+
+/** CIE L*a*b* of a #RRGGBB colour (sRGB, D65). */
+function toLab(hex: string): [number, number, number] {
+  const lin = (c: number) => {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const [r, g, b] = toRgb(hex).map(lin) as [number, number, number];
+  const x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const f = (t: number) => (t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+
+/** CIE76 colour difference: about 2.3 is just noticeable; 25 or more reads as a clearly different colour. */
+export function deltaE76(a: string, b: string): number {
+  const [l1, a1, b1] = toLab(a);
+  const [l2, a2, b2] = toLab(b);
+  return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
+}
+
+/** Colours that read as clearly different (CIE76 ΔE). */
+export const MIN_SERIES_DELTA_E = 25;
+
+/**
+ * `count` colours that are clearly different from each other: `first`, then each candidate in order that is at least
+ * `minDelta` away from every colour already chosen. Fewer if the candidates run out.
+ */
+export function distinctPalette(first: string, candidates: readonly string[], count: number, minDelta = MIN_SERIES_DELTA_E): string[] {
+  const chosen = [first.toUpperCase()];
+  for (const c of candidates) {
+    if (chosen.length >= count) break;
+    if (chosen.every((p) => deltaE76(p, c) >= minDelta)) chosen.push(c.toUpperCase());
+  }
+  return chosen;
+}

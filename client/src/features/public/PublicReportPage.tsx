@@ -12,7 +12,7 @@ import { AnswerCard } from '@/features/ask/AnswerCard';
 import type { DatasetState } from '@/features/ask/HowCalculated';
 import { ReportHeader } from '@/features/reports/ReportHeader';
 import { documentVars } from '@/features/reports/document';
-import { ClosingNote, DownloadPdfButton, RunningFooter } from '@/features/reports/print';
+import { ClosingNote, DownloadPdfButton, RunningFooter, usePrinting } from '@/features/reports/print';
 
 export const UNAVAILABLE_MESSAGE = "This link isn't available. It may have expired or been turned off. Ask the person who sent it for a new link.";
 
@@ -105,6 +105,7 @@ export function PublicReportPage() {
 }
 
 function SharedReport({ report, onLogoError, logoHidden }: { report: PublicReport; onLogoError: () => void; logoHidden: boolean }) {
+  const printing = usePrinting();
   return (
     <div className="space-y-6" data-report-root style={documentVars(report.brand)}>
       <RunningFooter title={report.title} businessName={report.brand.business_name} />
@@ -125,7 +126,7 @@ function SharedReport({ report, onLogoError, logoHidden }: { report: PublicRepor
           const block: Block = { ...item.block, dataset_id: null };
           return (
             <li key={item.block.id}>
-              <AnswerCard block={block} dataset={NO_FILE} mode="public" heading={item.heading_override ?? undefined} documentLook />
+              <AnswerCard block={block} dataset={NO_FILE} mode="public" heading={item.heading_override ?? undefined} chartLook={printing ? 'print' : 'document'} />
             </li>
           );
         })}
