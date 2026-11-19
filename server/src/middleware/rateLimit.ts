@@ -69,3 +69,37 @@ export const publicRateLimit: RequestHandler = rateLimit({
   keyGenerator: (req) => `public:${ipKeyGenerator(req.ip ?? 'unknown')}`,
   handler,
 });
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Planning a dashboard: 5 per dataset per day (only requests that succeed count, so a stranger's 404s cannot use it up). */
+export const dashboardPlanDatasetLimit: RequestHandler = rateLimit({
+  windowMs: DAY_MS,
+  limit: 5,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: (req) => `dashboard-plan-dataset:${String(req.params.id)}`,
+  skipFailedRequests: true,
+  handler,
+});
+
+/** Planning a dashboard: 20 per user per day. */
+export const dashboardPlanUserLimit: RequestHandler = rateLimit({
+  windowMs: DAY_MS,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.auth ? `dashboard-plan-user:${req.auth.userId}` : ipKey(req)),
+  skipFailedRequests: true,
+  handler,
+});
+
+/** Dashboard data (filters): 60 per minute per user. */
+export const dashboardDataLimit: RequestHandler = rateLimit({
+  windowMs: WINDOW_MS,
+  limit: 60,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.auth ? `dashboard-data:${req.auth.userId}` : ipKey(req)),
+  handler,
+});

@@ -10,6 +10,7 @@ import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { ipRateLimit, userRateLimit } from './middleware/rateLimit.js';
 import { autoReportsRouter } from './routes/autoReports.js';
 import { blocksRouter } from './routes/blocks.js';
+import { dashboardsRouter } from './routes/dashboards.js';
 import { datasetsRouter } from './routes/datasets.js';
 import { healthRouter } from './routes/health.js';
 import { internalRouter } from './routes/internal.js';
@@ -50,6 +51,7 @@ export function createApp(): Express {
   v1.use(requireConsent);
   v1.use(workspacesRouter);
   v1.use(datasetsRouter);
+  v1.use(dashboardsRouter);
   v1.use(blocksRouter);
   v1.use(reportsRouter);
   v1.use(brandingRouter);
