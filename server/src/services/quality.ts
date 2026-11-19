@@ -276,6 +276,9 @@ export async function computeQuality(
     const q1 = num(s.q1);
     const q3 = num(s.q3);
     const iqr = q3 - q1;
+    // User decision 2026-11-19: with no spread between the quartiles (a mostly-zero column such as a discount) there is
+    // no usual range to compare with, so the check is skipped.
+    if (iqr === 0) continue;
     const outside = `${col} < ${q1 - 3 * iqr} OR ${col} > ${q3 + 3 * iqr}`;
     const k = num((await rows(session, `${CAPPED} SELECT count(*) AS k FROM t WHERE ${outside}`))[0]?.k);
     if (k === 0) continue;

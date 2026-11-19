@@ -124,6 +124,20 @@ describe('quality: rules at the edges', () => {
     expect((await quality(columns, csvOf(['n'], twenty))).issues.map((i) => i.id)).toEqual(['extreme_values:n']);
   });
 
+  it('a mostly-zero column (interquartile range 0) gives no extreme-values issue', async () => {
+    const columns = [col('discount', 'decimal')];
+    const rows = Array.from({ length: 40 }, (_, i) => [i % 8 === 0 ? String(30 + i) : '0']);
+    // (A one-column file of mostly zeros also has duplicate rows; only the extreme-values check matters here.)
+    expect((await quality(columns, csvOf(['discount'], rows))).issues.filter((i) => i.kind === 'extreme_values')).toEqual([]);
+  });
+
+  it('a column with a real spread still flags a true outlier', async () => {
+    const columns = [col('amount', 'decimal')];
+    const rows = Array.from({ length: 40 }, (_, i) => [String(i === 7 ? 50_000 : 100 + i * 3)]);
+    const r = await quality(columns, csvOf(['amount'], rows));
+    expect(r.issues.map((i) => [i.id, i.affected_rows, i.examples])).toEqual([['extreme_values:amount', 1, ['50000']]]);
+  });
+
   it('impossible dates: before 1990 or more than 366 days after today (SAST)', async () => {
     expect(latestPossibleDate(new Date('2026-11-18T22:30:00Z'))).toBe('2027-11-20'); // already 19 Nov in SAST
     const columns = [col('d', 'date')];
@@ -162,4 +176,27 @@ describe('quality: rules at the edges', () => {
   ] as const)('band of %d is %s', (score, band) => {
     expect(bandFor(score)).toBe(band);
   });
+});
+
+describe('quality: large files', () => {
+  // Every plan's max_rows is at most 200 000, so a larger file cannot reach the route; the engine is tested directly.
+  const big = (n: number) => {
+    const columns = [col('id', 'integer'), col('store', 'text', 'category'), col('amount', 'decimal')];
+    const lines = ['id,store,amount'];
+    for (let i = 0; i < n; i++) lines.push(`${i},${['Durban', 'Cape Town', 'Pretoria'][i % 3]},${(i * 7.31) % 5000}`);
+    return { columns, csv: Buffer.from(`${lines.join('\n')}\n`) };
+  };
+
+  it('checks at most the first 200 000 rows and says so', async () => {
+    const { columns, csv } = big(200_050);
+    expect((await quality(columns, csv)).rows_checked).toBe(200_000);
+  }, 60_000);
+
+  it('200 000 rows finish well inside the 10 s limit', async () => {
+    const { columns, csv } = big(200_000);
+    const started = Date.now();
+    const r = await quality(columns, csv);
+    expect(r.rows_checked).toBe(200_000);
+    expect(Date.now() - started).toBeLessThan(10_000);
+  }, 60_000);
 });
