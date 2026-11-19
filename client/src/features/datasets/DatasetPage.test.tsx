@@ -142,7 +142,7 @@ describe('the file workspace: tabs and their URLs', () => {
     expect(await screen.findByRole('tab', { name: 'Ask', selected: true })).toBeInTheDocument();
     expect(tabNames()).toEqual(['Ask', 'Reports']);
     expect(at(router)).toBe(`/datasets/${id}/ask`);
-    expect(screen.getByText(/The original file was deleted/)).toBeInTheDocument();
+    expect(screen.getByText(/The original file was deleted on/)).toBeInTheDocument();
   });
 
   it('the header: name, status in words, and rows, columns and upload date', async () => {

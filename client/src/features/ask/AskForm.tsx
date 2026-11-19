@@ -1,6 +1,6 @@
 import { useId, type KeyboardEvent } from 'react';
 import { Send } from 'lucide-react';
-import type { ChartType } from '@/api/types';
+import type { ChartType, DatasetStatus } from '@/api/types';
 import { FieldError } from '@/components/FormField';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -20,6 +20,17 @@ export const CHART_HINTS: Array<{ value: '' | ChartType; label: string }> = [
   { value: 'pie', label: 'Pie chart' },
   { value: 'kpi', label: 'One big number' },
 ];
+
+export const QUESTION_LABEL = 'Ask your own question about this file';
+export const ASK_OWN_HINT = 'You can ask anything about this file. Analyst shows how it got each answer.';
+
+/** Why a file cannot take questions, in words (null when it can). */
+export function askDisabledReason(status: DatasetStatus): string | null {
+  if (status === 'ready') return null;
+  if (status === 'expired') return 'The original file was deleted, so new questions cannot be asked about it.';
+  if (status === 'failed') return 'This file could not be read, so it cannot answer questions. Open the file to try other options.';
+  return 'This file is still being read. You can ask as soon as it is ready.';
+}
 
 export function questionError(question: string): string | null {
   const length = question.trim().length;
@@ -62,7 +73,10 @@ export function AskForm({ question, hint, asking, error, disabledReason, onQuest
       }}
     >
       <div className="space-y-1.5">
-        <Label htmlFor={`${id}-question`}>Your question</Label>
+        <Label htmlFor={`${id}-question`}>{QUESTION_LABEL}</Label>
+        <p id={`${id}-own`} className="text-sm text-muted-foreground">
+          {ASK_OWN_HINT}
+        </p>
         <textarea
           id={`${id}-question`}
           value={question}
@@ -71,7 +85,7 @@ export function AskForm({ question, hint, asking, error, disabledReason, onQuest
           disabled={disabled}
           placeholder="For example: Which store had the highest net sales?"
           aria-invalid={error ? true : undefined}
-          aria-describedby={`${id}-count${error ? ` ${id}-error` : ''}`}
+          aria-describedby={`${id}-own ${id}-count${error ? ` ${id}-error` : ''}${disabledReason ? ` ${id}-reason` : ''}`}
           onChange={(event) => onQuestionChange(event.target.value)}
           onKeyDown={onKeyDown}
           className={cn(
@@ -110,7 +124,11 @@ export function AskForm({ question, hint, asking, error, disabledReason, onQuest
           {asking ? 'Asking…' : 'Ask'}
         </Button>
       </div>
-      {disabledReason && <p className="text-sm">{disabledReason}</p>}
+      {disabledReason && (
+        <p id={`${id}-reason`} className="text-sm">
+          {disabledReason}
+        </p>
+      )}
     </form>
   );
 }

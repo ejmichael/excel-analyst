@@ -31,7 +31,7 @@ describe('AskForm', () => {
   it('needs 3 to 500 characters, with a live count and a written error', async () => {
     const onSubmit = vi.fn();
     render(<Harness onSubmit={onSubmit} />);
-    const box = screen.getByLabelText('Your question');
+    const box = screen.getByLabelText('Ask your own question about this file');
     await userEvent.type(box, 'hi');
     expect(screen.getByText('2 of 500 characters')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Ask' }));
@@ -44,7 +44,7 @@ describe('AskForm', () => {
   it('Enter asks; Shift+Enter makes a new line', async () => {
     const onSubmit = vi.fn();
     render(<Harness onSubmit={onSubmit} />);
-    const box = screen.getByLabelText('Your question');
+    const box = screen.getByLabelText('Ask your own question about this file');
     await userEvent.type(box, 'Total sales{Shift>}{Enter}{/Shift}by store');
     expect(box).toHaveValue('Total sales\nby store');
     expect(onSubmit).not.toHaveBeenCalled();
@@ -54,7 +54,7 @@ describe('AskForm', () => {
 
   it('is disabled while asking', () => {
     render(<Harness onSubmit={vi.fn()} asking />);
-    expect(screen.getByLabelText('Your question')).toBeDisabled();
+    expect(screen.getByLabelText('Ask your own question about this file')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Asking…' })).toBeDisabled();
     expect(screen.getByLabelText('Show it as')).toBeDisabled();
   });

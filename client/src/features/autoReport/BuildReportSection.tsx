@@ -51,7 +51,7 @@ function StartPanel({ dataset }: { dataset: DatasetDetail }) {
         <Sparkles aria-hidden />
         Build my report
       </Button>
-      <p>Analyst answers the questions below and puts them in a draft report. You can change anything afterwards.</p>
+      <p>Analyst answers the suggested questions from the Ask tab and puts them in a draft report. You can change anything afterwards.</p>
       {quota && <p className="text-sm text-muted-foreground tabular">{quota}</p>}
       <BuildReportDialog open={open} dataset={dataset} onClose={() => setOpen(false)} />
     </section>

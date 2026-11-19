@@ -10,7 +10,7 @@ import { formatNumber } from '@/lib/format';
 import { AnswerCard } from './AnswerCard';
 import { AnswerHistory } from './AnswerHistory';
 import { describeAskError, type AskErrorView } from './askErrors';
-import { AskForm, questionError } from './AskForm';
+import { AskForm, askDisabledReason, questionError } from './AskForm';
 import { AskWaiting } from './AskWaiting';
 import type { DatasetState } from './HowCalculated';
 import { useAsk } from './queries';
@@ -89,14 +89,7 @@ function AskView({ dataset }: { dataset: DatasetDetail }) {
 
   const used = me.data?.usage.questions;
   const limit = me.data?.limits.max_questions_per_month;
-  const disabledReason =
-    dataset.status === 'expired'
-      ? null
-      : dataset.status === 'ready'
-        ? null
-        : dataset.status === 'failed'
-          ? 'This file could not be read, so it cannot answer questions. Open the file to try other options.'
-          : 'This file is still being read. You can ask as soon as it is ready.';
+  const disabledReason = askDisabledReason(dataset.status);
 
   return (
     <div className="space-y-6">
@@ -180,6 +173,7 @@ function Suggestions({ suggestions, disabled, onAsk }: { suggestions: DatasetDet
       <h2 id="ask-suggestions" className="text-base font-semibold">
         Questions you could ask
       </h2>
+      <p className="text-sm text-muted-foreground">Click a question to start</p>
       <div className="grid gap-2 sm:grid-cols-2">
         {suggestions.slice(0, 5).map((s) => (
           <Button
@@ -190,7 +184,11 @@ function Suggestions({ suggestions, disabled, onAsk }: { suggestions: DatasetDet
             onClick={() => onAsk(s.question)}
           >
             <MessageSquareText className="mt-0.5 shrink-0 self-start text-primary" aria-hidden />
-            <span>{s.question}</span>
+            {/* Why it is worth asking, as the dataset page used to show it. */}
+            <span className="space-y-1">
+              <span className="block font-medium">{s.question}</span>
+              {s.why && <span className="block text-sm font-normal text-muted-foreground">{s.why}</span>}
+            </span>
           </Button>
         ))}
       </div>

@@ -107,7 +107,7 @@ describe('Build my report: the button', () => {
   it('shows the button, the sentence and the quota from Me on a ready file with at least 3 suggestions', async () => {
     setup(() => null);
     expect(screen.getByRole('button', { name: 'Build my report' })).toBeInTheDocument();
-    expect(screen.getByText('Analyst answers the questions below and puts them in a draft report. You can change anything afterwards.')).toBeInTheDocument();
+    expect(screen.getByText('Analyst answers the suggested questions from the Ask tab and puts them in a draft report. You can change anything afterwards.')).toBeInTheDocument();
     expect(await screen.findByText('Uses up to 5 of your 15 questions left this month and 1 report.')).toBeInTheDocument();
   });
 

@@ -9,6 +9,7 @@ import { mockTransport, setMockLatency } from '@/api/mocks/handlers';
 import { mockStore } from '@/api/mocks/store';
 import { SessionProvider } from '@/auth/SessionProvider';
 import { routes } from '@/routes';
+import { ASK_OWN_HINT, askDisabledReason } from './AskForm';
 
 async function signInDemo() {
   setMockLatency(0);
@@ -68,7 +69,7 @@ describe('Ask page', () => {
   it('a new answer starts fresh: panels opened on the previous answer are closed again', async () => {
     const { datasetId } = await signInDemo();
     renderAt(`/datasets/${datasetId}/ask`);
-    const box = await screen.findByLabelText('Your question');
+    const box = await screen.findByLabelText('Ask your own question about this file');
     await userEvent.type(box, 'Which transactions were refunds?{Enter}');
     let newest = await screen.findByRole('region', { name: 'Newest answer' }, { timeout: 3000 });
     await userEvent.click(within(newest).getByRole('button', { name: 'Show the rows this is based on' }));
@@ -84,7 +85,7 @@ describe('Ask page', () => {
   it('shows cannot_answer in a panel with the suggestions, and keeps the question', async () => {
     const { datasetId } = await signInDemo();
     renderAt(`/datasets/${datasetId}/ask`);
-    const box = await screen.findByLabelText('Your question');
+    const box = await screen.findByLabelText('Ask your own question about this file');
     await userEvent.type(box, 'Will it rain tomorrow?{Enter}');
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent("Analyst can't answer that from this file");
@@ -103,7 +104,7 @@ describe('Ask page', () => {
           })
         : mockTransport(url, init);
     renderAt(`/datasets/${datasetId}/ask`, transport);
-    await userEvent.type(await screen.findByLabelText('Your question'), 'Total fees?{Enter}');
+    await userEvent.type(await screen.findByLabelText('Ask your own question about this file'), 'Total fees?{Enter}');
     expect(await screen.findByRole('alert')).toHaveTextContent("You're asking quickly; wait 30 seconds and try again.");
   });
 
@@ -111,7 +112,7 @@ describe('Ask page', () => {
     const { user, datasetId } = await signInDemo();
     user.question_events = Array.from({ length: 20 }, () => new Date().toISOString());
     renderAt(`/datasets/${datasetId}/ask`);
-    await userEvent.type(await screen.findByLabelText('Your question'), 'Total fees?{Enter}');
+    await userEvent.type(await screen.findByLabelText('Ask your own question about this file'), 'Total fees?{Enter}');
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Your Free plan includes 20 questions a month. You have used 20 this month.');
   });
@@ -133,5 +134,103 @@ describe('Ask page', () => {
     await userEvent.click(within(history).getByRole('button', { name: 'Load more' }));
     await waitFor(() => expect(within(history).getAllByRole('listitem')).toHaveLength(25));
     expect(within(history).queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Ask tab: suggestions and your own question', () => {
+  beforeAll(async () => {
+    await import('./AskTab');
+  }, 30_000);
+
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  function recording() {
+    const calls: Array<{ question: string; source?: string }> = [];
+    const transport: Transport = async (url, init) => {
+      if (url.endsWith('/ask')) calls.push(JSON.parse(String(init.body)));
+      return mockTransport(url, init);
+    };
+    return { calls, transport };
+  }
+
+  it('"Click a question to start": a suggestion is asked with source suggested', async () => {
+    const { datasetId } = await signInDemo();
+    const { calls, transport } = recording();
+    renderAt(`/datasets/${datasetId}/ask`, transport);
+    expect(await screen.findByText('Click a question to start')).toBeInTheDocument();
+    const section = screen.getByRole('region', { name: 'Questions you could ask' });
+    const first = within(section).getAllByRole('button')[0]!;
+    const question = first.querySelector('.font-medium')!.textContent!;
+    await userEvent.click(first);
+    await screen.findByRole('region', { name: 'Newest answer' }, { timeout: 3000 });
+    expect(calls).toEqual([{ question, source: 'suggested' }]);
+  });
+
+  it('the own-question box: a visible label, the plain line, and Ask sends your words as source user', async () => {
+    const { datasetId } = await signInDemo();
+    const { calls, transport } = recording();
+    renderAt(`/datasets/${datasetId}/ask`, transport);
+    const box = await screen.findByLabelText('Ask your own question about this file');
+    expect(box).toHaveAccessibleDescription(expect.stringContaining(ASK_OWN_HINT));
+    expect(screen.getByText(ASK_OWN_HINT)).toBeVisible();
+    await userEvent.type(box, 'Total fees per store');
+    await userEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    await screen.findByRole('region', { name: 'Newest answer' }, { timeout: 3000 });
+    expect(calls).toEqual([{ question: 'Total fees per store', source: 'user' }]);
+  });
+
+  it('too short: says so and asks nothing', async () => {
+    const { datasetId } = await signInDemo();
+    const { calls, transport } = recording();
+    renderAt(`/datasets/${datasetId}/ask`, transport);
+    await userEvent.type(await screen.findByLabelText('Ask your own question about this file'), 'ab');
+    await userEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    expect(await screen.findByText('Write at least 3 characters.')).toBeInTheDocument();
+    expect(calls).toEqual([]);
+  });
+
+  it('the old link /datasets/:id?q= opens the Ask tab and asks once', async () => {
+    const { datasetId } = await signInDemo();
+    const { calls, transport } = recording();
+    const router = renderAt(`/datasets/${datasetId}?q=${encodeURIComponent('Total fees per store')}`, transport);
+    await screen.findByRole('region', { name: 'Newest answer' }, { timeout: 3000 });
+    expect(router.state.location.pathname).toBe(`/datasets/${datasetId}/ask`);
+    expect(router.state.location.search).toBe('');
+    expect(calls).toEqual([{ question: 'Total fees per store', source: 'user' }]);
+  });
+
+  it('an expired file: the box is disabled with the reason in words; earlier answers stay', async () => {
+    await signInDemo();
+    const user = mockStore.findUser('demo@example.co.za')!;
+    const expired = user.datasets!.find((d) => d.detail.status === 'expired')!;
+    renderAt(`/datasets/${expired.detail.id}/ask`);
+    const box = await screen.findByLabelText('Ask your own question about this file');
+    expect(box).toBeDisabled();
+    expect(box).toHaveAccessibleDescription(expect.stringContaining('The original file was deleted, so new questions cannot be asked about it.'));
+    expect(screen.getByRole('button', { name: 'Ask' })).toBeDisabled();
+  });
+
+  it.each([
+    ['ready', null],
+    ['profiling', 'This file is still being read. You can ask as soon as it is ready.'],
+    ['uploading', 'This file is still being read. You can ask as soon as it is ready.'],
+    ['failed', 'This file could not be read, so it cannot answer questions. Open the file to try other options.'],
+    ['expired', 'The original file was deleted, so new questions cannot be asked about it.'],
+  ] as const)('a %s file: %s', (status, reason) => {
+    expect(askDisabledReason(status)).toBe(reason);
+  });
+});
+
+describe('Reports tab', () => {
+  it('has Build my report and a link to the Reports page', async () => {
+    await signInDemo();
+    const user = mockStore.findUser('demo@example.co.za')!;
+    const bank = user.datasets!.find((d) => d.detail.name === 'Bank statement October')!;
+    const router = renderAt(`/datasets/${bank.detail.id}/reports`);
+    expect(await screen.findByRole('button', { name: 'Build my report' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('link', { name: 'Open the Reports page' }));
+    expect(router.state.location.pathname).toBe('/reports');
   });
 });
