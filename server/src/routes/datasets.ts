@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { AppError, notFound, throwIfDbError } from '../lib/errors.js';
 import { authOf, ok } from '../lib/http.js';
+import { logger } from '../lib/logger.js';
 import { getObject, putObject, rawPath, removeObjects } from '../lib/storage.js';
 import { supabaseAdmin, supabaseForUser } from '../lib/supabase.js';
 import { uploadRateLimit } from '../middleware/rateLimit.js';
@@ -24,12 +25,14 @@ import { assertWithinLimit } from '../services/limits.js';
 import { checkFileContent } from '../services/parsing/content.js';
 import { PII_SEMANTICS, placeholderFor } from '../services/parsing/pii.js';
 import { firstRows, needsQuery, pageRowPositions, rowsAt, sortColumn } from '../services/preview.js';
+import { computeQuality } from '../services/quality.js';
 import { enqueueProfiling } from '../services/profiling.js';
 import { withSandbox } from '../services/sandbox/sandbox.js';
 import { recordUsage } from '../services/usageEvents.js';
 import type {
   ColumnSemantic,
   DatasetPreview,
+  DatasetQuality,
   Deleted,
   Paged,
   ReparseRequest,
@@ -298,6 +301,12 @@ datasetsRouter.patch('/datasets/:id', requireUuidParam(), validate({ body: patch
       .eq('owner_id', userId);
     throwIfDbError('datasets: update column', error);
   }
+  // The stored quality result depends on meanings and PII flags (which checks run, which examples are shown) and quotes
+  // column labels, so it is computed again next time.
+  if (updates.some((u) => u.patch.semantic !== undefined || u.patch.is_pii !== undefined || u.patch.display_name !== undefined)) {
+    const { error } = await admin.from('datasets').update({ quality: null }).eq('id', id).eq('owner_id', userId);
+    throwIfDbError('datasets: clear quality', error);
+  }
   if (body.name !== undefined) {
     const { error } = await admin.from('datasets').update({ name: body.name }).eq('id', id).eq('owner_id', userId);
     throwIfDbError('datasets: rename', error);
@@ -332,7 +341,8 @@ datasetsRouter.post('/datasets/:id/reparse', requireUuidParam(), validate({ body
 
   const { data: row, error } = await supabaseAdmin()
     .from('datasets')
-    .update({ status: 'profiling', error_message: null, error_details: null, suggestions: [] })
+    // The stored quality result belongs to the old parse.
+    .update({ status: 'profiling', error_message: null, error_details: null, suggestions: [], quality: null })
     .eq('id', id)
     .eq('owner_id', userId)
     .in('status', ['ready', 'failed'])
@@ -385,6 +395,40 @@ datasetsRouter.get('/datasets/:id/preview', requireUuidParam(), validate({ query
     matched_rows: matched,
   };
   ok(res, preview);
+});
+
+// ---------- GET /datasets/:id/quality ----------
+
+datasetsRouter.get('/datasets/:id/quality', requireUuidParam(), async (req, res) => {
+  const { userId, token } = authOf(req);
+  const id = req.params.id as string;
+  const db = supabaseForUser(token);
+  const dataset = await getOwnDataset(db, userId, id);
+  if (dataset.status === 'expired') throw new AppError('dataset_expired', 'The source file was removed after the retention period.');
+  if (dataset.status !== 'ready') throw new AppError('dataset_not_ready', 'This file is not ready yet.');
+  const { data: stored, error } = await db.from('datasets').select('quality').eq('id', id).eq('owner_id', userId).single<{ quality: DatasetQuality | null }>();
+  throwIfDbError('datasets: quality read', error);
+  if (stored?.quality) {
+    ok(res, stored.quality);
+    return;
+  }
+  const file = dataset.normalised_path ? await getObject(dataset.normalised_path) : null;
+  if (!file) throw new AppError('dataset_expired', 'The source file is no longer available.');
+
+  const columns = await getColumns(db, id);
+  const started = Date.now();
+  const computed = await withSandbox({ csv: file, columns }, (session) =>
+    computeQuality(
+      session,
+      columns.map((c) => ({ sql_name: c.sql_name, label: c.display_name ?? c.name, data_type: c.data_type, semantic: c.semantic, is_pii: c.is_pii })),
+    ),
+  );
+  const quality: DatasetQuality = { dataset_id: id, ...computed, computed_at: new Date().toISOString() };
+  // Stored only while the dataset is still ready; a reparse started meanwhile clears it anyway.
+  const { error: saveError } = await supabaseAdmin().from('datasets').update({ quality }).eq('id', id).eq('owner_id', userId).eq('status', 'ready');
+  throwIfDbError('datasets: quality save', saveError);
+  logger.info({ dataset_id: id, rows_checked: quality.rows_checked, issues: quality.issues.length, score: quality.score, ms: Date.now() - started }, 'quality computed');
+  ok(res, quality);
 });
 
 // ---------- DELETE /datasets/:id ----------
