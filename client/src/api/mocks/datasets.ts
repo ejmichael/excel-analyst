@@ -22,6 +22,7 @@ import {
   type DatasetTemplate,
 } from './datasetFixtures';
 import { seedDemoBlocks } from './blocks';
+import { mockQuality } from './quality';
 
 export interface MockDataset {
   detail: DatasetDetail;
@@ -414,7 +415,7 @@ export function routeDatasets(method: string, url: URL, user: MockUser, body: un
     return ok({ items: items.slice(offset, offset + limit).map(summary), total: items.length, limit, offset });
   }
 
-  const match = /^\/datasets\/([^/]+)(\/preview|\/reparse)?$/.exec(path);
+  const match = /^\/datasets\/([^/]+)(\/preview|\/reparse|\/quality)?$/.exec(path);
   if (!match) return null;
   const id = decodeURIComponent(match[1] ?? '');
   const ds = datasetsOf(user).find((d) => d.detail.id === id);
@@ -474,6 +475,12 @@ export function routeDatasets(method: string, url: URL, user: MockUser, body: un
       });
     }
     return ok(preview(d, { ...rest, sort: sort || null }));
+  }
+
+  if (sub === '/quality' && method === 'GET') {
+    if (d.status === 'expired') return fail(410, 'dataset_expired', 'The source file was removed.');
+    if (d.status !== 'ready') return fail(409, 'dataset_not_ready', 'The dataset is not ready.');
+    return ok(mockQuality(d, ds.template_key));
   }
 
   if (sub === '/reparse' && method === 'POST') {

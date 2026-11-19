@@ -12,8 +12,9 @@ import { formatDate, formatNumber } from '@/lib/format';
 import { DatasetHeader } from './DatasetHeader';
 import { ParseDialog } from './ParseDialog';
 import { ProfilingState } from './ProfilingState';
-import { useDatasetPolling, useReparseDataset } from './queries';
+import { useDatasetPolling, useDatasetQuality, useReparseDataset } from './queries';
 import { DataTab } from './workspace/DataTab';
+import { QualityTab } from './workspace/QualityTab';
 import { ReadingBar } from './workspace/ReadingBar';
 import { ReportsTab } from './workspace/ReportsTab';
 import { TabBar, panelId, tabId } from './workspace/TabBar';
@@ -100,7 +101,7 @@ function DatasetView({ dataset, slow, tab }: { dataset: DatasetDetail; slow: boo
 
       {active && (
         <div className="space-y-6">
-          <TabBar datasetId={dataset.id} tabs={tabs} active={active} />
+          <TabBar datasetId={dataset.id} tabs={tabs} active={active} badges={{ quality: <QualityBadge dataset={dataset} /> }} />
           <div role="tabpanel" id={panelId(active)} aria-labelledby={tabId(active)} tabIndex={-1} className="outline-none">
             <TabPanel tab={active} dataset={dataset} />
           </div>
@@ -121,6 +122,8 @@ function TabPanel({ tab, dataset }: { tab: WorkspaceTab; dataset: DatasetDetail 
   switch (tab) {
     case 'data':
       return <DataTab dataset={dataset} />;
+    case 'quality':
+      return <QualityTab dataset={dataset} />;
     case 'ask':
       return (
         <Suspense fallback={<InlineLoading label="Loading" />}>
@@ -130,6 +133,18 @@ function TabPanel({ tab, dataset }: { tab: WorkspaceTab; dataset: DatasetDetail 
     case 'reports':
       return <ReportsTab dataset={dataset} />;
   }
+}
+
+/** The score on the Quality tab once it has loaded; nothing while it loads or if it fails (the tab itself says why). */
+function QualityBadge({ dataset }: { dataset: DatasetDetail }) {
+  const quality = useDatasetQuality(dataset.id, dataset.status === 'ready');
+  if (!quality.data) return null;
+  return (
+    <span className="rounded-full border bg-secondary px-2 py-0.5 text-xs font-medium text-foreground tabular" data-quality-badge>
+      {formatNumber(quality.data.score, 0)}
+      <span className="sr-only">, score out of 100</span>
+    </span>
+  );
 }
 
 function Warnings({ dataset, onCheckReading }: { dataset: DatasetDetail; onCheckReading: () => void }) {

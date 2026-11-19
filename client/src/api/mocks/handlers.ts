@@ -225,6 +225,8 @@ export const mockTransport: Transport = async (url, init) => {
 
   if (path.startsWith('/datasets')) {
     if (!user.popia_consent_at) return fail(403, 'consent_required', 'Accept the terms and privacy notice first.');
+    // Like the server's first quality check, which reads the whole file: a moment longer.
+    if (path.endsWith('/quality') && latencyMs > 0) await new Promise((resolve) => setTimeout(resolve, 1200));
     const result = routeDatasets(method, parsedUrl, user, body);
     mockStore.save();
     if (result) return json(result.status, result.body);

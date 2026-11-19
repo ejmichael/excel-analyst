@@ -9,6 +9,7 @@ export type WorkspaceTab = 'data' | 'quality' | 'ask' | 'reports';
  */
 export const TABS: ReadonlyArray<{ key: WorkspaceTab; label: string }> = [
   { key: 'data', label: 'Data' },
+  { key: 'quality', label: 'Quality' },
   { key: 'ask', label: 'Ask' },
   { key: 'reports', label: 'Reports' },
 ];

@@ -33,6 +33,7 @@ const ANSWER_FILES = [
   // The file workspace (Part W1): counts and scores come from the server; only paging positions are worked out.
   '../datasets/workspace/DataTab.tsx',
   '../datasets/workspace/DataTable.tsx',
+  '../datasets/workspace/QualityTab.tsx',
 ];
 
 const FORBIDDEN: Array<[RegExp, string]> = [

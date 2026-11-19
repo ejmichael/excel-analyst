@@ -58,18 +58,19 @@ describe('every way into the parse dialog says "Check how we read your file"', (
 });
 
 describe('the file workspace: tabs and their URLs', () => {
-  const tabNames = () => screen.getAllByRole('tab').map((t) => t.textContent);
+  // The label only (the Quality tab adds its score once loaded).
+  const tabNames = () => screen.getAllByRole('tab').map((t) => t.firstChild?.textContent);
 
   it('the old dataset URL opens the default tab, Ask', async () => {
     const { router, id } = await openDataset('Bank statement October');
     const tab = await screen.findByRole('tab', { name: 'Ask' });
     expect(tab).toHaveAttribute('aria-selected', 'true');
     expect(at(router)).toBe(`/datasets/${id}/ask`);
-    expect(tabNames()).toEqual(['Data', 'Ask', 'Reports']);
+    expect(tabNames()).toEqual(['Data', 'Quality', 'Ask', 'Reports']);
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', tab.id);
   });
 
-  it.each(['data', 'ask', 'reports'])('/%s opens that tab', async (key) => {
+  it.each(['data', 'quality', 'ask', 'reports'])('/%s opens that tab', async (key) => {
     await openDataset('Bank statement October', `/${key}`);
     const selected = await screen.findByRole('tab', { selected: true });
     expect(selected.getAttribute('href')).toMatch(new RegExp(`/${key}$`));
@@ -98,6 +99,9 @@ describe('the file workspace: tabs and their URLs', () => {
     expect(screen.getByRole('tab', { name: 'Ask' })).toHaveAttribute('tabindex', '-1');
     data.focus();
     await userEvent.keyboard('{ArrowRight}');
+    expect(at(router)).toBe(`/datasets/${id}/quality`);
+    expect(screen.getByRole('tab', { name: /^Quality/ })).toHaveFocus();
+    await userEvent.keyboard('{ArrowRight}');
     expect(at(router)).toBe(`/datasets/${id}/ask`);
     expect(screen.getByRole('tab', { name: 'Ask' })).toHaveFocus();
     await userEvent.keyboard('{End}');
@@ -110,6 +114,14 @@ describe('the file workspace: tabs and their URLs', () => {
     expect(at(router)).toBe(`/datasets/${id}/data`);
     // A visible focus ring on the focused tab.
     expect(screen.getByRole('tab', { name: 'Data' }).className).toMatch(/focus-visible:ring-2/);
+  });
+
+  it('the Quality tab shows the server score as a badge once it has loaded, without opening the tab', async () => {
+    await openDataset('Webstore orders October', '/ask');
+    const quality = await screen.findByRole('tab', { name: /^Quality/ });
+    expect(quality).toHaveAttribute('aria-selected', 'false');
+    expect(await within(quality).findByText('70')).toBeInTheDocument();
+    expect(quality).toHaveAccessibleName('Quality70, score out of 100');
   });
 
   it('no tabs while the file is being read, or when it could not be read', async () => {
