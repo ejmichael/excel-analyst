@@ -30,6 +30,9 @@ const ANSWER_FILES = [
   '../reports/ShareDialog.tsx',
   '../reports/print.tsx',
   '../public/PublicReportPage.tsx',
+  // The file workspace (Part W1): counts and scores come from the server; only paging positions are worked out.
+  '../datasets/workspace/DataTab.tsx',
+  '../datasets/workspace/DataTable.tsx',
 ];
 
 const FORBIDDEN: Array<[RegExp, string]> = [

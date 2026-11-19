@@ -3,6 +3,7 @@ import type {
   Dataset,
   DatasetDetail,
   DatasetPreview,
+  DatasetQuality,
   Deleted,
   ID,
   Paged,
@@ -38,6 +39,32 @@ export function reparseDataset(id: ID, body: ReparseRequest): Promise<Dataset> {
 /** GET /datasets/:id/preview?limit= (needs 'ready') */
 export function getDatasetPreview(id: ID, limit: number, signal?: AbortSignal): Promise<DatasetPreview> {
   return apiFetch<DatasetPreview>(`/datasets/${encodeURIComponent(id)}/preview?limit=${limit}`, { signal });
+}
+
+export interface RowsQuery {
+  limit: number;
+  offset: number;
+  /** A column's sql_name, or null for the file's own order. */
+  sort: string | null;
+  dir: 'asc' | 'desc';
+  /** Kept to rows where any text column contains it; empty for no search. */
+  q: string;
+}
+
+/** GET /datasets/:id/preview?limit=&offset=&sort=&dir=&q= (needs 'ready'): a page of the file's rows. */
+export function getDatasetRows(id: ID, query: RowsQuery, signal?: AbortSignal): Promise<DatasetPreview> {
+  const params = new URLSearchParams({ limit: String(query.limit), offset: String(query.offset) });
+  if (query.sort) {
+    params.set('sort', query.sort);
+    params.set('dir', query.dir);
+  }
+  if (query.q) params.set('q', query.q);
+  return apiFetch<DatasetPreview>(`/datasets/${encodeURIComponent(id)}/preview?${params}`, { signal });
+}
+
+/** GET /datasets/:id/quality (needs 'ready'; the first call can take a few seconds) */
+export function getDatasetQuality(id: ID, signal?: AbortSignal): Promise<DatasetQuality> {
+  return apiFetch<DatasetQuality>(`/datasets/${encodeURIComponent(id)}/quality`, { signal });
 }
 
 /** DELETE /datasets/:id */

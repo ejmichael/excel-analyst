@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { errorMessage, isApiError } from '@/api/client';
 import type { DatasetColumn, DatasetDetail, UpdateDatasetRequest } from '@/api/types';
@@ -23,10 +23,15 @@ const VAT_OPTIONS: Array<{ value: string; label: string; stored: boolean | null 
 interface ColumnsFormProps {
   columns: DatasetColumn[];
   onSave: (columns: NonNullable<UpdateDatasetRequest['columns']>) => Promise<DatasetDetail>;
+  /** Shown beside the heading, for example a Show or Hide button. */
+  headerAction?: ReactNode;
+  /** Hides everything under the heading; unsaved edits are kept. */
+  collapsed?: boolean;
+  bodyId?: string;
 }
 
 /** Column names, meanings, Private and VAT, edited locally and saved together. */
-export function ColumnsForm({ columns, onSave }: ColumnsFormProps) {
+export function ColumnsForm({ columns, onSave, headerAction, collapsed = false, bodyId }: ColumnsFormProps) {
   const [drafts, setDrafts] = useState<ColumnDrafts>(() => draftsFrom(columns));
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<ReturnType<typeof columnFieldErrors>>({});
@@ -66,56 +71,60 @@ export function ColumnsForm({ columns, onSave }: ColumnsFormProps) {
 
   return (
     <section aria-labelledby="columns-heading" className="space-y-4">
-      <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="columns-heading" className="text-xl font-semibold">
           Columns
         </h2>
+        {headerAction}
+      </div>
+
+      <div id={bodyId} hidden={collapsed} className="space-y-4">
         <p className="text-sm text-muted-foreground">
           Rename columns and say what they mean. Private columns are hidden from the AI: it never sees their values.
         </p>
-      </div>
 
-      <ul className="space-y-3">
-        {columns.map((column) => {
-          const draft = drafts[column.id];
-          return draft ? (
-            <ColumnRow
-              key={column.id}
-              column={column}
-              draft={draft}
-              errors={errors[column.id] ?? {}}
-              onChange={(change) => update(column.id, change)}
-            />
-          ) : null;
-        })}
-      </ul>
+        <ul className="space-y-3">
+          {columns.map((column) => {
+            const draft = drafts[column.id];
+            return draft ? (
+              <ColumnRow
+                key={column.id}
+                column={column}
+                draft={draft}
+                errors={errors[column.id] ?? {}}
+                onChange={(change) => update(column.id, change)}
+              />
+            ) : null;
+          })}
+        </ul>
 
-      <div
-        className={cn(
-          'flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center',
-          // Pinned to the bottom of the screen only while there is something to save.
-          dirty && 'sticky bottom-2 z-10 border-primary/50 shadow-md',
-        )}
-      >
-        <div className="flex-1 space-y-2" aria-live="polite">
-          {formError && <FormMessage>{formError}</FormMessage>}
-          {!formError && (
-            <p className="text-sm">
-              {dirty
-                ? `Unsaved changes in ${patch.length} ${patch.length === 1 ? 'column' : 'columns'}.`
-                : saved
-                  ? 'Changes saved.'
-                  : 'No unsaved changes.'}
-            </p>
+        <div
+          className={cn(
+            'flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center',
+            // Pinned to the bottom of the screen only while there is something to save.
+            dirty && 'sticky bottom-2 z-10 border-primary/50 shadow-md',
           )}
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" disabled={!dirty || saving} onClick={() => setDrafts(draftsFrom(columns))}>
-            Discard
-          </Button>
-          <Button disabled={!dirty || saving} onClick={() => void save()}>
-            {saving ? 'Saving…' : 'Save changes'}
-          </Button>
+        >
+          <div className="flex-1 space-y-2" aria-live="polite">
+            {formError && <FormMessage>{formError}</FormMessage>}
+            {!formError && (
+              <p className="text-sm">
+                {dirty
+                  ? `Unsaved changes in ${patch.length} ${patch.length === 1 ? 'column' : 'columns'}.`
+                  : saved
+                    ? 'Changes saved.'
+                    : 'No unsaved changes.'}
+              </p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={!dirty || saving} onClick={() => setDrafts(draftsFrom(columns))}>
+              Discard
+            </Button>
+            <Button disabled={!dirty || saving} onClick={() => void save()}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </div>
         </div>
       </div>
     </section>

@@ -65,6 +65,17 @@ export function formatCell(value: string | number | boolean | null, type?: strin
  * A result value as a number, or null. DuckDB decimals can arrive as text, so plain numeric strings count too.
  * This only reads the value the API sent; it never calculates one.
  */
+/**
+ * A cell of the Data tab: numbers in en-ZA (money columns as rand), Yes or No, and dates and text exactly as the
+ * server sends them. Null is an empty string (the table adds an "empty" label for screen readers).
+ */
+export function formatRowValue(value: string | number | boolean | null, { money = false } = {}): string {
+  if (value === null) return '';
+  if (typeof value === 'number') return money ? formatZar(value) : formatNumber(value, 10);
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return value;
+}
+
 export function toNumeric(value: string | number | boolean | null | undefined): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value === 'string' && /^\s*-?\d+(\.\d+)?([eE][-+]?\d+)?\s*$/.test(value)) return Number(value);

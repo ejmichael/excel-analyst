@@ -1,12 +1,15 @@
 import { useRef } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   deleteDataset,
   getDataset,
   getDatasetPreview,
+  getDatasetQuality,
+  getDatasetRows,
   listDatasets,
   reparseDataset,
   updateDataset,
+  type RowsQuery,
 } from '@/api/datasets';
 import type { Dataset, DatasetDetail, DatasetStatus, ID, ReparseRequest, UpdateDatasetRequest } from '@/api/types';
 import { meKey } from '@/auth/useMe';
@@ -19,6 +22,8 @@ export const datasetKeys = {
   list: (workspaceId: ID) => ['datasets', 'list', workspaceId] as const,
   detail: (id: ID) => ['datasets', 'detail', id] as const,
   preview: (id: ID) => ['datasets', 'preview', id] as const,
+  rows: (id: ID, query: RowsQuery) => ['datasets', 'preview', id, query] as const,
+  quality: (id: ID) => ['datasets', 'quality', id] as const,
 };
 
 /** The list refreshes itself every 3 s while any dataset on it is still being read (paused when the tab is hidden). */
@@ -85,6 +90,30 @@ export function useDatasetPreview(id: ID, enabled: boolean) {
   });
 }
 
+export const ROWS_PAGE_SIZE = 50;
+
+/**
+ * One page of the Data tab. Each response carries the query it answers, and the previous page stays on screen
+ * (placeholderData) while the next loads: the table only ever treats as current the rows whose query matches.
+ */
+export function useDatasetRows(id: ID, query: RowsQuery) {
+  return useQuery({
+    queryKey: datasetKeys.rows(id, query),
+    queryFn: async ({ signal }) => ({ query, preview: await getDatasetRows(id, query, signal) }),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The file's quality (Quality tab and its badge). Stored by the server, so it is fetched once per visit. */
+export function useDatasetQuality(id: ID, enabled: boolean) {
+  return useQuery({
+    queryKey: datasetKeys.quality(id),
+    queryFn: ({ signal }) => getDatasetQuality(id, signal),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
 function useAfterChange() {
   const queryClient = useQueryClient();
   return (detail?: DatasetDetail) => {
@@ -100,8 +129,9 @@ export function useUpdateDataset(id: ID) {
     mutationFn: (body: UpdateDatasetRequest) => updateDataset(id, body),
     onSuccess: (detail) => {
       after(detail);
-      // Labels in the preview header follow display names.
+      // Labels in the preview header follow display names; the server re-checks quality when a meaning or PII flag changes.
       void queryClient.invalidateQueries({ queryKey: datasetKeys.preview(id) });
+      void queryClient.invalidateQueries({ queryKey: datasetKeys.quality(id) });
     },
   });
 }
@@ -115,6 +145,7 @@ export function useReparseDataset(id: ID) {
       // Back to 'profiling': merge the summary so the page switches to the waiting state and polling restarts.
       queryClient.setQueryData<DatasetDetail>(datasetKeys.detail(id), (old) => (old ? { ...old, ...dataset } : old));
       queryClient.removeQueries({ queryKey: datasetKeys.preview(id) });
+      queryClient.removeQueries({ queryKey: datasetKeys.quality(id) });
       after();
     },
   });
