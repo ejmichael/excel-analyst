@@ -14,7 +14,7 @@ const ANSWER_FILES = [
   'AnswerCard.tsx',
   'AnswerHistory.tsx',
   'HowCalculated.tsx',
-  'AskPage.tsx',
+  'AskTab.tsx',
   // Reports show the same answers (Part 4).
   '../reports/ReportPage.tsx',
   '../reports/ReportHeader.tsx',

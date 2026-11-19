@@ -9,6 +9,13 @@ const longDate = new Intl.DateTimeFormat(LOCALE, {
   timeZone: TIME_ZONE,
 });
 
+const shortDate = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short', year: 'numeric', timeZone: TIME_ZONE });
+
+/** An ISO timestamp -> '19 Nov 2026', read in SAST. */
+export function formatShortDate(value: string): string {
+  return shortDate.format(new Date(value));
+}
+
 /** Rand amount, e.g. R 1 234,50 (the exact space characters depend on the runtime's ICU data). */
 export function formatZar(value: number): string {
   return zar.format(value);

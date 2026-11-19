@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { formatBytes, formatNumber } from '@/lib/format';
+import { formatBytes, formatNumber, formatShortDate } from '@/lib/format';
 import { expirySentence, rowCountLabel } from './DatasetList';
 import { useDeleteDataset, useUpdateDataset } from './queries';
 import { StatusBadge } from './StatusBadge';
@@ -46,11 +46,14 @@ export function DatasetHeader({ dataset }: { dataset: DatasetDetail }) {
     );
   };
 
-  const meta = [
-    dataset.original_filename,
-    formatBytes(dataset.size_bytes),
+  // "25 rows, 8 columns, uploaded 19 Nov 2026" (counts as the server gives them), then the file itself.
+  const columns = dataset.columns.length;
+  const summary = [
     dataset.row_count !== null && dataset.status !== 'failed' ? rowCountLabel(dataset.row_count) : null,
+    columns > 0 ? `${formatNumber(columns, 0)} ${columns === 1 ? 'column' : 'columns'}` : null,
+    `uploaded ${formatShortDate(dataset.created_at)}`,
   ].filter(Boolean);
+  const meta = [dataset.original_filename, formatBytes(dataset.size_bytes)];
   const excluded = dataset.status === 'ready' ? excludedRowsNote(dataset.excluded_rows) : null;
   // An expired file has its own panel saying when it was deleted.
   const expiry = dataset.status === 'expired' ? null : expirySentence(dataset);
@@ -99,6 +102,7 @@ export function DatasetHeader({ dataset }: { dataset: DatasetDetail }) {
       )}
 
       <div className="space-y-1 text-sm text-muted-foreground">
+        <p className="tabular">{summary.join(', ').replace(/^./, (c) => c.toUpperCase())}</p>
         <p className="tabular break-all">{meta.join(' · ')}</p>
         {excluded && <p>{excluded}</p>}
         {expiry && <p>{expiry}</p>}

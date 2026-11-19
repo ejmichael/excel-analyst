@@ -39,7 +39,7 @@ function renderAt(path: string, transport: Transport = mockTransport) {
 describe('Ask page', () => {
   // The route loads AskPage on demand; load it once up front so each test renders straight away.
   beforeAll(async () => {
-    await import('./AskPage');
+    await import('./AskTab');
   }, 30_000);
 
   beforeEach(() => {

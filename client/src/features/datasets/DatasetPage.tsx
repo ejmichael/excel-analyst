@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Link, useParams } from 'react-router';
-import { ArrowLeft, Archive, CircleAlert, MessageSquareText, TriangleAlert } from 'lucide-react';
+import { Suspense, lazy, useState } from 'react';
+import { Link, Navigate, useLocation, useParams } from 'react-router';
+import { ArrowLeft, Archive, CircleAlert, TriangleAlert } from 'lucide-react';
 import { errorMessage, isApiError } from '@/api/client';
 import type { DatasetDetail } from '@/api/types';
 import { useMe } from '@/auth/useMe';
@@ -9,13 +9,18 @@ import { InlineLoading } from '@/components/PageStatus';
 import { UpgradeDialog } from '@/components/UpgradeDialog';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatNumber } from '@/lib/format';
-import { BuildReportSection } from '@/features/autoReport/BuildReportSection';
-import { ColumnsForm } from './ColumnsForm';
 import { DatasetHeader } from './DatasetHeader';
 import { ParseDialog } from './ParseDialog';
-import { PreviewTable } from './PreviewTable';
 import { ProfilingState } from './ProfilingState';
-import { useDatasetPolling, useDatasetPreview, useReparseDataset, useUpdateDataset } from './queries';
+import { useDatasetPolling, useReparseDataset } from './queries';
+import { DataTab } from './workspace/DataTab';
+import { ReadingBar } from './workspace/ReadingBar';
+import { ReportsTab } from './workspace/ReportsTab';
+import { TabBar, panelId, tabId } from './workspace/TabBar';
+import { defaultTabFor, tabPath, tabsFor, type WorkspaceTab } from './workspace/tabs';
+
+// Loaded on demand: answers draw charts (Recharts), which are most of the bundle.
+const AskTab = lazy(async () => ({ default: (await import('@/features/ask/AskTab')).AskTab }));
 
 function BackLink() {
   return (
@@ -29,8 +34,9 @@ function BackLink() {
   );
 }
 
+/** /datasets/:id and /datasets/:id/:tab: the file workspace. */
 export function DatasetPage() {
-  const { id = '' } = useParams();
+  const { id = '', tab } = useParams();
   const query = useDatasetPolling(id);
 
   return (
@@ -52,31 +58,36 @@ export function DatasetPage() {
           )}
         </div>
       ) : (
-        <DatasetView dataset={query.data} slow={query.isSlow} />
+        <DatasetView dataset={query.data} slow={query.isSlow} tab={tab} />
       )}
     </div>
   );
 }
 
-function DatasetView({ dataset, slow }: { dataset: DatasetDetail; slow: boolean }) {
+function DatasetView({ dataset, slow, tab }: { dataset: DatasetDetail; slow: boolean; tab: string | undefined }) {
+  const location = useLocation();
   const [parseOpen, setParseOpen] = useState(false);
   const reparse = useReparseDataset(dataset.id);
-  const parseDialog = (
-    <ParseDialog
-      dataset={dataset}
-      open={parseOpen}
-      onClose={() => setParseOpen(false)}
-      onSubmit={(options) => reparse.mutateAsync(options)}
-    />
-  );
+  const tabs = tabsFor(dataset.status);
+  const active = tabs.find((t) => t.key === tab)?.key;
+  const fallback = defaultTabFor(dataset.status);
+
+  // No tab, or one this file does not have: open the default tab (keeping ?q= from older links).
+  if (fallback && !active) {
+    return <Navigate to={{ pathname: tabPath(dataset.id, fallback), search: location.search }} replace />;
+  }
+
+  const openParse = () => setParseOpen(true);
 
   return (
     <>
       <DatasetHeader dataset={dataset} />
+      {dataset.status === 'ready' && <ReadingBar dataset={dataset} onChange={openParse} />}
+      {dataset.status === 'ready' && dataset.warnings.length > 0 && <Warnings dataset={dataset} onCheckReading={openParse} />}
       {(dataset.status === 'profiling' || dataset.status === 'uploading') && <ProfilingState slow={slow} />}
-      {dataset.status === 'failed' && <FailedPanel dataset={dataset} onCheckReading={() => setParseOpen(true)} />}
+      {dataset.status === 'failed' && <FailedPanel dataset={dataset} onCheckReading={openParse} />}
       {dataset.status === 'expired' && (
-        <div className="flex items-start gap-3 rounded-xl border bg-card p-6">
+        <div className="flex items-start gap-3 rounded-2xl border bg-card p-6">
           <Archive className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
           <p>
             {dataset.expires_at
@@ -86,9 +97,61 @@ function DatasetView({ dataset, slow }: { dataset: DatasetDetail; slow: boolean 
           </p>
         </div>
       )}
-      {dataset.status === 'ready' && <ReadyView dataset={dataset} onCheckReading={() => setParseOpen(true)} />}
-      {parseDialog}
+
+      {active && (
+        <div className="space-y-6">
+          <TabBar datasetId={dataset.id} tabs={tabs} active={active} />
+          <div role="tabpanel" id={panelId(active)} aria-labelledby={tabId(active)} tabIndex={-1} className="outline-none">
+            <TabPanel tab={active} dataset={dataset} />
+          </div>
+        </div>
+      )}
+
+      <ParseDialog
+        dataset={dataset}
+        open={parseOpen}
+        onClose={() => setParseOpen(false)}
+        onSubmit={(options) => reparse.mutateAsync(options)}
+      />
     </>
+  );
+}
+
+function TabPanel({ tab, dataset }: { tab: WorkspaceTab; dataset: DatasetDetail }) {
+  switch (tab) {
+    case 'data':
+      return <DataTab dataset={dataset} />;
+    case 'ask':
+      return (
+        <Suspense fallback={<InlineLoading label="Loading" />}>
+          <AskTab dataset={dataset} />
+        </Suspense>
+      );
+    case 'reports':
+      return <ReportsTab dataset={dataset} />;
+  }
+}
+
+function Warnings({ dataset, onCheckReading }: { dataset: DatasetDetail; onCheckReading: () => void }) {
+  return (
+    <section aria-labelledby="warnings-heading" className="rounded-2xl border border-warning/40 bg-warning-bg p-5">
+      <div className="flex items-start gap-3">
+        <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
+        <div className="space-y-3">
+          <h2 id="warnings-heading" className="text-lg font-semibold">
+            Please check: {dataset.warnings.length === 1 ? 'one thing' : `${formatNumber(dataset.warnings.length, 0)} things`} we were not sure about
+          </h2>
+          <ul className="list-disc space-y-1 pl-5">
+            {dataset.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+          <Button variant="outline" className="bg-card" onClick={onCheckReading}>
+            Check how we read your file
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -98,7 +161,7 @@ function FailedPanel({ dataset, onCheckReading }: { dataset: DatasetDetail; onCh
   // Flow A step 5: a plan-limit failure (max_rows) carries structured details, including the plan that allows it.
   const rowLimit = dataset.error_details;
   return (
-    <div role="alert" className="rounded-xl border border-destructive/40 bg-card p-6">
+    <div role="alert" className="rounded-2xl border border-destructive/40 bg-card p-6">
       <div className="flex items-start gap-3">
         <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
         <div className="space-y-3">
@@ -117,95 +180,6 @@ function FailedPanel({ dataset, onCheckReading }: { dataset: DatasetDetail; onCh
       {me.data && (
         <UpgradeDialog details={showLimit ? rowLimit : null} plan={me.data.plan} onClose={() => setShowLimit(false)} />
       )}
-    </div>
-  );
-}
-
-function ReadyView({ dataset, onCheckReading }: { dataset: DatasetDetail; onCheckReading: () => void }) {
-  const update = useUpdateDataset(dataset.id);
-  const preview = useDatasetPreview(dataset.id, true);
-  const suggestions = dataset.suggestions.slice(0, 5);
-
-  return (
-    <div className="space-y-8">
-      <BuildReportSection dataset={dataset} />
-      {dataset.warnings.length > 0 && (
-        <section
-          aria-labelledby="warnings-heading"
-          className="rounded-xl border border-warning/40 bg-warning-bg p-5"
-        >
-          <div className="flex items-start gap-3">
-            <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
-            <div className="space-y-3">
-              <h2 id="warnings-heading" className="text-lg font-semibold">
-                Please check: {dataset.warnings.length === 1 ? 'one thing' : `${formatNumber(dataset.warnings.length, 0)} things`} we were not sure about
-              </h2>
-              <ul className="list-disc space-y-1 pl-5">
-                {dataset.warnings.map((w) => (
-                  <li key={w}>{w}</li>
-                ))}
-              </ul>
-              <Button variant="outline" className="bg-card" onClick={onCheckReading}>
-                Check how we read your file
-              </Button>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {suggestions.length > 0 && (
-        <section aria-labelledby="suggestions-heading" className="space-y-3">
-          <h2 id="suggestions-heading" className="text-xl font-semibold">
-            Questions you could ask
-          </h2>
-          <ul className="grid gap-3 md:grid-cols-2">
-            {suggestions.map((s) => (
-              <li key={s.question}>
-                <Link
-                  to={`/datasets/${dataset.id}/ask?q=${encodeURIComponent(s.question)}`}
-                  className="flex h-full min-h-11 items-start gap-3 rounded-xl border bg-card p-4 hover:border-primary/50 hover:bg-accent/40"
-                >
-                  <MessageSquareText className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
-                  <span className="space-y-1">
-                    <span className="block font-medium">{s.question}</span>
-                    <span className="block text-sm text-muted-foreground">{s.why}</span>
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <ColumnsForm
-        columns={dataset.columns}
-        onSave={(columns) => update.mutateAsync({ columns })}
-      />
-
-      <section aria-labelledby="preview-heading" className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <h2 id="preview-heading" className="text-xl font-semibold">
-            Preview
-          </h2>
-          {dataset.warnings.length === 0 && (
-            <Button variant="link" className="px-0" onClick={onCheckReading}>
-              Check how we read your file
-            </Button>
-          )}
-        </div>
-        {preview.isPending ? (
-          <InlineLoading label="Loading the preview" />
-        ) : preview.isError ? (
-          <div className="space-y-3">
-            <FormMessage>{errorMessage(preview.error)}</FormMessage>
-            <Button variant="outline" onClick={() => void preview.refetch()}>
-              Try again
-            </Button>
-          </div>
-        ) : (
-          <PreviewTable preview={preview.data} columns={dataset.columns} />
-        )}
-      </section>
     </div>
   );
 }

@@ -58,13 +58,8 @@ export const routes: RouteObject[] = [
             children: [
               { path: '/', element: <Navigate to="/datasets" replace /> },
               { path: '/datasets', element: <DatasetsPage /> },
-              { path: '/datasets/:id', element: <DatasetPage /> },
-              // Loaded on demand: the charts (Recharts) are most of the bundle.
-              {
-                path: '/datasets/:id/ask',
-                lazy: async () => ({ Component: (await import('@/features/ask/AskPage')).AskPage }),
-                hydrateFallbackElement: <InlineLoading label="Loading" />,
-              },
+              // The file workspace: /datasets/:id opens the default tab; /datasets/:id/ask?q= still asks.
+              { path: '/datasets/:id/:tab?', element: <DatasetPage /> },
               { path: '/reports', element: <ReportsPage /> },
               {
                 path: '/reports/:id',

@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router';
-import { ArrowLeft, CircleAlert, Info, MessageSquareText } from 'lucide-react';
-import { errorMessage, isApiError } from '@/api/client';
+import { Link, useSearchParams } from 'react-router';
+import { CircleAlert, MessageSquareText } from 'lucide-react';
 import type { AskRequest, Block, ChartType, DatasetDetail } from '@/api/types';
 import { useMe } from '@/auth/useMe';
-import { FormMessage } from '@/components/FormField';
-import { InlineLoading } from '@/components/PageStatus';
 import { UpgradeDialog } from '@/components/UpgradeDialog';
 import { Button } from '@/components/ui/button';
 import { env } from '@/env';
-import { formatDate, formatNumber } from '@/lib/format';
-import { useDatasetPolling } from '@/features/datasets/queries';
+import { formatNumber } from '@/lib/format';
 import { AnswerCard } from './AnswerCard';
 import { AnswerHistory } from './AnswerHistory';
 import { describeAskError, type AskErrorView } from './askErrors';
@@ -19,38 +15,9 @@ import { AskWaiting } from './AskWaiting';
 import type { DatasetState } from './HowCalculated';
 import { useAsk } from './queries';
 
-function BackLink({ id, name }: { id: string; name?: string }) {
-  return (
-    <Link
-      to={`/datasets/${id}`}
-      className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
-    >
-      <ArrowLeft className="size-4" aria-hidden />
-      {name ? `Back to ${name}` : 'Back to the file'}
-    </Link>
-  );
-}
-
-export function AskPage() {
-  const { id = '' } = useParams();
-  const dataset = useDatasetPolling(id);
-
-  return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <BackLink id={id} name={dataset.data?.name} />
-      {dataset.isPending ? (
-        <InlineLoading label="Loading the file" />
-      ) : dataset.isError ? (
-        <FormMessage>
-          {isApiError(dataset.error) && dataset.error.code === 'not_found'
-            ? 'We could not find this file. It may have been deleted.'
-            : errorMessage(dataset.error)}
-        </FormMessage>
-      ) : (
-        <AskView dataset={dataset.data} />
-      )}
-    </div>
-  );
+/** The Ask tab: the question box, suggestions, the newest answer and every earlier answer for this file. */
+export function AskTab({ dataset }: { dataset: DatasetDetail }) {
+  return <AskView dataset={dataset} />;
 }
 
 function AskView({ dataset }: { dataset: DatasetDetail }) {
@@ -134,7 +101,7 @@ function AskView({ dataset }: { dataset: DatasetDetail }) {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold break-words sm:text-3xl">Ask about {dataset.name}</h1>
+        <h2 className="text-xl font-semibold break-words">Ask about {dataset.name}</h2>
         {used !== undefined && limit !== undefined && (
           <p className="text-sm text-muted-foreground tabular">
             {formatNumber(used, 0)} of {formatNumber(limit, 0)} questions used this month
@@ -149,14 +116,6 @@ function AskView({ dataset }: { dataset: DatasetDetail }) {
         </p>
       )}
 
-      {dataset.status === 'expired' && (
-        <p className="flex items-start gap-2 rounded-xl border bg-card p-4 text-sm">
-          <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-          {dataset.expires_at
-            ? `The original file was deleted on ${formatDate(dataset.expires_at)}. You can still read your earlier answers.`
-            : 'The original file was deleted. You can still read your earlier answers.'}
-        </p>
-      )}
 
       <AskForm
         question={question}

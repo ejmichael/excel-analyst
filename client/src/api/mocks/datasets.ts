@@ -342,22 +342,61 @@ function previewValue(raw: string, type: string): string | number | boolean | nu
   return raw;
 }
 
-function preview(detail: DatasetDetail, limit: number): DatasetPreview {
-  const total = detail.row_count ?? 0;
-  const rows = Array.from({ length: Math.min(limit, total) }, (_, i) =>
+type PreviewRow = DatasetPreview['rows'][number];
+
+/** Every row of a mock file: the column samples in turn, numbers varied a little so sorting shows something. */
+function mockRows(detail: DatasetDetail): PreviewRow[] {
+  return Array.from({ length: detail.row_count ?? 0 }, (_, i) =>
     Object.fromEntries(
       detail.columns.map((c) => {
         const samples = c.sample_values.length ? c.sample_values : [''];
-        return [c.sql_name, previewValue(samples[i % samples.length] ?? '', c.data_type)];
+        const value = previewValue(samples[i % samples.length] ?? '', c.data_type);
+        return [c.sql_name, typeof value === 'number' && !c.is_pii ? value + (i % 7) : value];
       }),
     ),
   );
+}
+
+export interface PreviewQuery {
+  limit: number;
+  offset: number;
+  sort: string | null;
+  dir: 'asc' | 'desc';
+  q: string;
+}
+
+/** Like the server: sort (nulls last both ways), search text columns, then the page; matched_rows counts the search. */
+export function preview(detail: DatasetDetail, { limit, offset, sort, dir, q }: PreviewQuery): DatasetPreview {
+  let rows = mockRows(detail);
+  const needle = q.trim().toLowerCase();
+  if (needle) {
+    const text = detail.columns.filter((c) => c.data_type === 'text').map((c) => c.sql_name);
+    rows = rows.filter((r) => text.some((k) => String(r[k] ?? '').toLowerCase().includes(needle)));
+  }
+  if (sort) {
+    const order = dir === 'desc' ? -1 : 1;
+    rows = [...rows].sort((x, y) => {
+      const a = x[sort] ?? null;
+      const b = y[sort] ?? null;
+      if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
+      return (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b))) * order;
+    });
+  }
   return {
     columns: detail.columns.map((c) => ({ sql_name: c.sql_name, label: c.display_name ?? c.name, data_type: c.data_type })),
-    rows,
-    total_rows: total,
+    rows: rows.slice(offset, offset + limit),
+    total_rows: detail.row_count ?? 0,
+    matched_rows: rows.length,
   };
 }
+
+const previewQuery = z.strictObject({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+  sort: z.string().optional(),
+  dir: z.enum(['asc', 'desc']).default('asc'),
+  q: z.string().max(100).default(''),
+});
 
 /** Routes /datasets*. Returns null when the path is not a datasets route. */
 export function routeDatasets(method: string, url: URL, user: MockUser, body: unknown): Result | null {
@@ -426,8 +465,15 @@ export function routeDatasets(method: string, url: URL, user: MockUser, body: un
   if (sub === '/preview' && method === 'GET') {
     if (d.status === 'expired') return fail(410, 'dataset_expired', 'The source file was removed.');
     if (d.status !== 'ready') return fail(409, 'dataset_not_ready', 'The dataset is not ready.');
-    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') ?? 50) || 50));
-    return ok(preview(d, limit));
+    const parsed = previewQuery.safeParse(Object.fromEntries(url.searchParams));
+    if (!parsed.success) return validationFailed(parsed.error, 'query');
+    const { sort, ...rest } = parsed.data;
+    if (sort && !d.columns.some((c) => c.sql_name === sort)) {
+      return fail(422, 'validation_failed', 'Some fields are not valid.', {
+        fields: [{ location: 'query', path: 'sort', message: 'Sort by one of the file’s columns.' }],
+      });
+    }
+    return ok(preview(d, { ...rest, sort: sort || null }));
   }
 
   if (sub === '/reparse' && method === 'POST') {
