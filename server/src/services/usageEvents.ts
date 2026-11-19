@@ -19,7 +19,7 @@ export async function recordUsage(ownerId: string, kind: UsageKind, meta: UsageM
  */
 export async function recordLlmUsage(
   ownerId: string,
-  purpose: 'suggest' | 'plan' | 'repair' | 'narrate',
+  purpose: 'suggest' | 'plan' | 'repair' | 'narrate' | 'dashboard_plan' | 'dashboard_repair',
   usage: LlmUsage | null,
   meta: UsageMeta = {},
 ): Promise<void> {
