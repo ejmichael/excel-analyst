@@ -13,6 +13,7 @@ export const STATUS_BY_CODE: Record<ErrorCode, number> = {
   file_too_large: 413,
   plan_limit: 402,
   dataset_not_ready: 409,
+  dashboard_not_ready: 409,
   dataset_expired: 410,
   conflict: 409,
   rate_limited: 429,

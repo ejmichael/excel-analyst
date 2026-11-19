@@ -25,6 +25,7 @@ export type ErrorCode =
   | 'file_too_large' // 413
   | 'plan_limit' // 402 details: PlanLimitDetails
   | 'dataset_not_ready' // 409 still profiling, or failed
+  | 'dashboard_not_ready' // 409 the dataset's dashboard is still planning or failed
   | 'dataset_expired' // 410 source file removed by retention
   | 'conflict' // 409
   | 'rate_limited' // 429
@@ -307,6 +308,74 @@ export interface DatasetQuality {
   issues: QualityIssue[]; // most severe first, then most rows affected
   rows_checked: number; // equals the row count unless the file was sampled (see below)
   computed_at: ISODateTime;
+}
+
+// ---------- dashboard (GET/POST /datasets/:id/dashboard, POST /datasets/:id/dashboard/data) ----------
+export type DashboardStatus = 'planning' | 'ready' | 'failed';
+export type DashboardWidgetWidth = 'quarter' | 'half' | 'full';
+export type DashboardFilterKind = 'date_range' | 'category';
+
+export interface DashboardReading {
+  text: string; // plain words: how the file was understood, no numbers from the data
+  date_column: string | null; // sql_name
+}
+
+export interface DashboardFilter {
+  id: string; // 'date' or `cat:${sql_name}`
+  kind: DashboardFilterKind;
+  column: string; // sql_name
+  label: string;
+  options: string[]; // category: distinct values, sorted, at most 50; date_range: []
+  min: string | null; // date_range: earliest date in the file (YYYY-MM-DD)
+  max: string | null; // date_range: latest date
+}
+
+export interface DashboardWidget {
+  id: ID;
+  position: number;
+  title: string;
+  width: DashboardWidgetWidth;
+  sql: string;
+  chart: ChartSpec;
+}
+
+export interface Dashboard {
+  id: ID;
+  dataset_id: ID;
+  status: DashboardStatus;
+  error_message: string | null;
+  fallback: boolean; // true when the server built this dashboard without the model
+  reading: DashboardReading;
+  filters: DashboardFilter[];
+  widgets: DashboardWidget[];
+  created_at: ISODateTime;
+}
+
+export interface DashboardFilterValue {
+  filter_id: string;
+  from?: string | null; // date_range, YYYY-MM-DD, inclusive
+  to?: string | null; // date_range, YYYY-MM-DD, inclusive
+  values?: string[]; // category, at most 50; a row matches when its value is any of them
+}
+
+export interface DashboardDataRequest {
+  filters: DashboardFilterValue[]; // empty = no filter
+}
+
+export interface WidgetResult {
+  widget_id: ID;
+  columns: ResultColumn[];
+  rows: Array<Record<string, CellValue>>; // at most 50
+  total_rows: number;
+  truncated: boolean;
+  checks: BlockCheck[]; // only sql_read_only and result_not_truncated
+  error: string | null; // set when this widget could not run; the others still return
+}
+
+export interface DashboardData {
+  rows_total: number;
+  rows_in_scope: number; // rows left after the filters
+  widgets: WidgetResult[];
 }
 
 // ---------- questions and blocks ----------
