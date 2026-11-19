@@ -380,6 +380,7 @@ datasetsRouter.get('/datasets/:id/preview', requireUuidParam(), validate({ query
     columns: columns.map((c) => ({ sql_name: c.sql_name, label: c.display_name ?? c.name, data_type: c.data_type })),
     rows,
     total_rows: dataset.row_count ?? 0,
+    matched_rows: dataset.row_count ?? 0,
   };
   ok(res, preview);
 });

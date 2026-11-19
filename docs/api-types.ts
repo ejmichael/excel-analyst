@@ -271,6 +271,42 @@ export interface DatasetPreview {
   columns: Array<{ sql_name: string; label: string; data_type: ColumnDataType }>;
   rows: Array<Record<string, string | number | boolean | null>>;
   total_rows: number;
+  matched_rows: number; // rows matching q; equals total_rows when there is no q
+}
+
+// ---------- data quality (GET /datasets/:id/quality) ----------
+export type QualityPartKey = 'missing' | 'duplicates' | 'types' | 'odd_values' | 'consistency';
+export type QualitySeverity = 'high' | 'medium' | 'low';
+export type QualityBand = 'very_clean' | 'good' | 'needs_attention' | 'needs_cleaning';
+export type QualityIssueKind =
+  | 'missing_values' | 'duplicate_rows' | 'mixed_types' | 'extreme_values'
+  | 'impossible_dates' | 'inconsistent_case' | 'stray_whitespace' | 'mixed_url_scheme';
+
+export interface QualityPart {
+  key: QualityPartKey;
+  score: number; // 0 to 100, integer
+  note: string; // short plain English, for example "1 empty cell" or "none found"
+}
+
+export interface QualityIssue {
+  id: string; // stable: `${kind}:${column ?? '_'}`
+  kind: QualityIssueKind;
+  severity: QualitySeverity;
+  column: string | null; // the column's sql_name, null for whole-row issues
+  title: string; // plain English
+  detail: string; // one or two sentences
+  affected_rows: number;
+  examples: string[]; // at most 3 values from the file; empty for PII columns
+}
+
+export interface DatasetQuality {
+  dataset_id: ID;
+  score: number; // 0 to 100, integer
+  band: QualityBand;
+  parts: QualityPart[]; // always all five, in the order of QualityPartKey
+  issues: QualityIssue[]; // most severe first, then most rows affected
+  rows_checked: number; // equals the row count unless the file was sampled (see below)
+  computed_at: ISODateTime;
 }
 
 // ---------- questions and blocks ----------
