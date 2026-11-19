@@ -23,10 +23,11 @@ import {
 import { assertWithinLimit } from '../services/limits.js';
 import { checkFileContent } from '../services/parsing/content.js';
 import { PII_SEMANTICS, placeholderFor } from '../services/parsing/pii.js';
+import { firstRows, needsQuery, pageRowPositions, rowsAt, sortColumn } from '../services/preview.js';
 import { enqueueProfiling } from '../services/profiling.js';
+import { withSandbox } from '../services/sandbox/sandbox.js';
 import { recordUsage } from '../services/usageEvents.js';
 import type {
-  ColumnDataType,
   ColumnSemantic,
   DatasetPreview,
   Deleted,
@@ -345,42 +346,43 @@ datasetsRouter.post('/datasets/:id/reparse', requireUuidParam(), validate({ body
 
 // ---------- GET /datasets/:id/preview ----------
 
-const previewQuery = z.strictObject({ limit: z.coerce.number().int().min(1).max(200).default(50) });
-
-function typed(value: string, type: ColumnDataType): string | number | boolean | null {
-  if (value === '') return null;
-  if (type === 'integer' || type === 'decimal') return Number(value);
-  if (type === 'boolean') return value === 'true';
-  return value;
-}
+const previewQuery = z.strictObject({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).max(10_000_000).default(0),
+  sort: z.string().min(1).max(200).optional(),
+  dir: z.enum(['asc', 'desc']).default('asc'),
+  q: z.string().max(100, 'At most 100 characters.').optional(),
+});
 
 datasetsRouter.get('/datasets/:id/preview', requireUuidParam(), validate({ query: previewQuery }), async (req, res) => {
   const { userId, token } = authOf(req);
   const id = req.params.id as string;
-  const { limit } = validQuery<z.infer<typeof previewQuery>>(req);
+  const params = validQuery<z.infer<typeof previewQuery>>(req);
   const db = supabaseForUser(token);
   const dataset = await getOwnDataset(db, userId, id);
   if (dataset.status === 'expired') throw new AppError('dataset_expired', 'The source file was removed after the retention period.');
   if (dataset.status !== 'ready') throw new AppError('dataset_not_ready', 'This file is not ready yet.');
+  const columns = await getColumns(db, id);
+  // An unknown sort column is 422 before the file is read or any query runs.
+  sortColumn(columns, params.sort);
   const file = dataset.normalised_path ? await getObject(dataset.normalised_path) : null;
   if (!file) throw new AppError('dataset_expired', 'The source file is no longer available.');
 
-  const columns = await getColumns(db, id);
-  const rows: DatasetPreview['rows'] = [];
-  const parser = Readable.from([file]).pipe(parse({ columns: true, relax_column_count: true }));
-  try {
-    for await (const record of parser as AsyncIterable<Record<string, string>>) {
-      rows.push(Object.fromEntries(columns.map((c) => [c.sql_name, typed(record[c.sql_name] ?? '', c.data_type)])));
-      if (rows.length >= limit) break;
-    }
-  } finally {
-    parser.destroy();
+  const totalRows = dataset.row_count ?? 0;
+  let rows: DatasetPreview['rows'];
+  let matched = totalRows;
+  if (needsQuery(params)) {
+    const page = await withSandbox({ csv: file, columns }, (session) => pageRowPositions(session, columns, params, totalRows));
+    rows = await rowsAt(file, columns, page.positions);
+    matched = page.matched;
+  } else {
+    rows = await firstRows(file, columns, params.limit);
   }
   const preview: DatasetPreview = {
     columns: columns.map((c) => ({ sql_name: c.sql_name, label: c.display_name ?? c.name, data_type: c.data_type })),
     rows,
-    total_rows: dataset.row_count ?? 0,
-    matched_rows: dataset.row_count ?? 0,
+    total_rows: totalRows,
+    matched_rows: matched,
   };
   ok(res, preview);
 });
