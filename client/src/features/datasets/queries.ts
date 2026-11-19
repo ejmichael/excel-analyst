@@ -3,7 +3,6 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import {
   deleteDataset,
   getDataset,
-  getDatasetPreview,
   getDatasetQuality,
   getDatasetRows,
   listDatasets,
@@ -15,7 +14,6 @@ import type { Dataset, DatasetDetail, DatasetStatus, ID, ReparseRequest, UpdateD
 import { meKey } from '@/auth/useMe';
 
 export const DATASETS_PAGE_SIZE = 20;
-export const PREVIEW_LIMIT = 50;
 
 export const datasetKeys = {
   all: ['datasets'] as const,
@@ -82,13 +80,6 @@ export function useDatasetPolling(id: ID) {
   return { ...query, isSlow };
 }
 
-export function useDatasetPreview(id: ID, enabled: boolean) {
-  return useQuery({
-    queryKey: datasetKeys.preview(id),
-    queryFn: ({ signal }) => getDatasetPreview(id, PREVIEW_LIMIT, signal),
-    enabled,
-  });
-}
 
 export const ROWS_PAGE_SIZE = 50;
 

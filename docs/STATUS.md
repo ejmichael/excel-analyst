@@ -14,7 +14,7 @@ Mark `DONE` only after the endpoint has been run and tested. Values: `TODO`, `WI
 | S4 | Export and share | DONE | DONE (tested against the real server 2026-11-16: PDF by print on A4, Excel export, share links with and without working, public page in a private window, turn off, Free 402 and watermark). Part 5b (document look for print and the shared page): DONE, checked 2026-11-17 with page.pdf on A4 (5-answer real report 4 to 3 pages; 3, 30, flagged, light and dark brand, public page at 390px and desktop). Part 5c A and B (whole-number axes, distinct series colours, print chart sizes; edit bar never covers content, add or ask an answer while editing): DONE, checked 2026-11-19 against the real server (7-answer report prints 6 pages, closing note kept with the last answer). Part 5c C skipped: the Ask tab replaces it |
 | S5 | Templates and re-runs | TODO | TODO |
 | S6 | Plans, billing, hardening, handover | TODO | TODO |
-| W1 | Data tab rows (paging, sort, search) and data quality score | DONE |  |
+| W1 | Data tab rows (paging, sort, search) and data quality score | DONE | DONE (file workspace with Data, Quality, Ask and Reports tabs; tested against the real server 2026-11-19: sort and debounced search match the server's rows and matched_rows, the score and issues match /quality, "See the rows" opens a search, no page scroll at 390px, sticky first column) |
 
 ## Endpoints (server)
 | Slice | Endpoint | Status |

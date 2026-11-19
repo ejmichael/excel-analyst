@@ -5,7 +5,7 @@ import { createWorkspace, deleteWorkspace, listWorkspaces, updateWorkspace } fro
 import { mockAuthBackend } from './auth';
 import { mockTransport, mockUploadTransport, setMockLatency } from './handlers';
 import { MOCK_PROFILING_MS, handleUpload } from './datasets';
-import { deleteDataset, getDataset, getDatasetPreview, listDatasets, reparseDataset, updateDataset, uploadDataset } from '../datasets';
+import { deleteDataset, getDataset, getDatasetQuality, getDatasetRows, listDatasets, reparseDataset, updateDataset, uploadDataset, type RowsQuery } from '../datasets';
 import { mockStore } from './store';
 
 const caught = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e as ApiError);
@@ -169,8 +169,45 @@ describe('mock datasets behave like the contract', () => {
 
   it('while profiling: preview is 409 dataset_not_ready and reparse is 409 conflict (like the server)', async () => {
     const created = await upload(csv('04_ambiguous_dates.csv'));
-    expect((await caught(getDatasetPreview(created.id, 50)))?.code).toBe('dataset_not_ready');
+    expect((await caught(getDatasetRows(created.id, { limit: 50, offset: 0, sort: null, dir: 'asc', q: '' })))?.code).toBe('dataset_not_ready');
+    expect((await caught(getDatasetQuality(created.id)))?.code).toBe('dataset_not_ready');
     expect((await caught(reparseDataset(created.id, { date_format: 'mdy' })))?.code).toBe('conflict');
+  });
+
+  it('rows page, sort (nulls last) and search text columns, with matched_rows; quality is the contract shape', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const created = await upload(csv('04_ambiguous_dates.csv'));
+      vi.setSystemTime(Date.now() + MOCK_PROFILING_MS + 1);
+      const rows = (query: Partial<RowsQuery>) => getDatasetRows(created.id, { limit: 10, offset: 0, sort: null, dir: 'asc', q: '', ...query });
+
+      const first = await rows({});
+      expect(first.rows).toHaveLength(10);
+      expect(first.matched_rows).toBe(first.total_rows);
+      const second = await rows({ offset: 10 });
+      expect(second.rows[0]).not.toEqual(first.rows[0]);
+
+      const up = await rows({ sort: 'amount', limit: 200 });
+      const amounts = up.rows.map((r) => r.amount as number);
+      expect(amounts).toEqual([...amounts].sort((a, b) => a - b));
+      const down = await rows({ sort: 'amount', dir: 'desc', limit: 1 });
+      expect(down.rows[0]!.amount).toBe(amounts.at(-1));
+
+      const found = await rows({ q: 'COURIER', limit: 200 });
+      expect(found.matched_rows).toBeGreaterThan(0);
+      expect(found.matched_rows).toBeLessThan(found.total_rows);
+      expect(found.rows.every((r) => String(r.item).toLowerCase().includes('courier'))).toBe(true);
+      expect((await rows({ q: 'nothing like this' })).matched_rows).toBe(0);
+
+      expect((await caught(rows({ sort: 'not_a_column' })))?.fieldErrors.sort).toBeTruthy();
+
+      const quality = await getDatasetQuality(created.id);
+      expect(quality.dataset_id).toBe(created.id);
+      expect(quality.parts.map((p) => p.key)).toEqual(['missing', 'duplicates', 'types', 'odd_values', 'consistency']);
+      expect(quality.rows_checked).toBe(first.total_rows);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reparse re-detects what is not sent, keeps column edits by sql_name with new ids, and clears error_details', async () => {

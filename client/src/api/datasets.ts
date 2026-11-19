@@ -36,11 +36,6 @@ export function reparseDataset(id: ID, body: ReparseRequest): Promise<Dataset> {
   return apiFetch<Dataset>(`/datasets/${encodeURIComponent(id)}/reparse`, { method: 'POST', body });
 }
 
-/** GET /datasets/:id/preview?limit= (needs 'ready') */
-export function getDatasetPreview(id: ID, limit: number, signal?: AbortSignal): Promise<DatasetPreview> {
-  return apiFetch<DatasetPreview>(`/datasets/${encodeURIComponent(id)}/preview?limit=${limit}`, { signal });
-}
-
 export interface RowsQuery {
   limit: number;
   offset: number;
