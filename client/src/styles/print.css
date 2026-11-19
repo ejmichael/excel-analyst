@@ -117,6 +117,11 @@
     break-before: avoid;
   }
 
+  /* The note sits in the last answer's item: after a chart, the two move to a new page together. */
+  [data-report-answers] > li:has(> [data-closing-note]):has([data-answer-kind='chart']) {
+    break-inside: avoid;
+  }
+
   /* ---------- Tables and charts on paper ---------- */
 
   /* No scroll box, no clipping; text wraps between words and amounts stay on one line. */

@@ -106,6 +106,8 @@ export function PublicReportPage() {
 
 function SharedReport({ report, onLogoError, logoHidden }: { report: PublicReport; onLogoError: () => void; logoHidden: boolean }) {
   const printing = usePrinting();
+  // A shared report says nothing about the Excel download: that is the owner's.
+  const closingNote = <ClosingNote watermark={report.watermark} appName={env.appName} owner={false} />;
   return (
     <div className="space-y-6" data-report-root style={documentVars(report.brand)}>
       <RunningFooter title={report.title} businessName={report.brand.business_name} />
@@ -121,19 +123,20 @@ function SharedReport({ report, onLogoError, logoHidden }: { report: PublicRepor
       />
 
       <ol className="space-y-6" aria-label="Answers in this report" data-report-answers>
-        {report.blocks.map((item) => {
+        {report.blocks.map((item, i) => {
           // The public answer has no dataset id; the card treats it as an answer without a file behind it.
           const block: Block = { ...item.block, dataset_id: null };
           return (
             <li key={item.block.id}>
               <AnswerCard block={block} dataset={NO_FILE} mode="public" heading={item.heading_override ?? undefined} chartLook={printing ? 'print' : 'document'} />
+              {/* In the last answer's item, so on paper the note never starts a page on its own. */}
+              {i === report.blocks.length - 1 && closingNote}
             </li>
           );
         })}
       </ol>
 
-      {/* A shared report says nothing about the Excel download: that is the owner's. */}
-      <ClosingNote watermark={report.watermark} appName={env.appName} owner={false} />
+      {report.blocks.length === 0 && closingNote}
     </div>
   );
 }

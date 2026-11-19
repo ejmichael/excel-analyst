@@ -184,6 +184,7 @@ function ReportView({ report }: { report: ReportDetail }) {
   const remove = useDeleteReport(report.id, report.workspace_id);
 
   const shown = editing ? draft.blocks : draftFrom(report).blocks;
+  const closingNote = <ClosingNote watermark={report.watermark} appName={env.appName} owner />;
   const datasets = useDatasetStates(shown.map((b) => b.block.dataset_id));
   const patch = useMemo(() => (editing ? buildReportPatch(report, draft) : null), [editing, report, draft]);
 
@@ -355,6 +356,7 @@ function ReportView({ report }: { report: ReportDetail }) {
 
       <ol className="space-y-6" aria-label="Answers in this report" data-report-answers>
         {shown.map((item, i) => {
+          const last = i === shown.length - 1;
           const dataset = item.block.dataset_id ? (datasets.get(item.block.dataset_id) ?? DELETED) : DELETED;
           return (
             <li key={item.block_id} className="space-y-3">
@@ -404,6 +406,8 @@ function ReportView({ report }: { report: ReportDetail }) {
                 heading={item.heading.trim() || undefined}
                 chartLook={printing ? 'print' : 'app'}
               />
+              {/* In the last answer's item, so on paper the note never starts a page on its own. */}
+              {last && closingNote}
             </li>
           );
         })}
@@ -450,7 +454,7 @@ function ReportView({ report }: { report: ReportDetail }) {
           Made with {env.appName}
         </p>
       )}
-      <ClosingNote watermark={report.watermark} appName={env.appName} owner />
+      {shown.length === 0 && closingNote}
 
       {/* Mounted only while open: it loads the links and the plan when needed. */}
       {sharing && <ShareDialog open report={report} onClose={() => setSharing(false)} />}

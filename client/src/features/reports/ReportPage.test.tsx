@@ -94,8 +94,11 @@ describe('ReportPage: reading', () => {
     // On screen under the report (hidden in print), and in the closing note that prints instead.
     const watermarks = screen.getAllByText('Made with Analyst');
     expect(watermarks).toHaveLength(2);
-    expect(watermarks[0]).toHaveAttribute('data-print', 'hide');
-    expect(watermarks[1]!.closest('[data-closing-note]')).not.toBeNull();
+    const [inNote, onScreen] = watermarks[0]!.closest('[data-closing-note]') ? watermarks : [watermarks[1]!, watermarks[0]!];
+    expect(inNote!.closest('[data-closing-note]')).not.toBeNull();
+    expect(onScreen).toHaveAttribute('data-print', 'hide');
+    // The note sits in the last answer's item, so on paper it never starts a page alone.
+    expect(inNote!.closest('[data-report-answers] > li')).toBe(screen.getByRole('list', { name: 'Answers in this report' }).lastElementChild);
     // In a report: no follow-ups, no feedback, delete or add-to-report.
     expect(screen.queryByText('Ask next')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'This looks wrong' })).not.toBeInTheDocument();

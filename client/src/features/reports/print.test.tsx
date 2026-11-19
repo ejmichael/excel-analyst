@@ -125,6 +125,8 @@ describe('the print stylesheet', () => {
   it('the check line never starts a page, and the closing note never stands alone', () => {
     expect(printRule('[data-check-line] {')).toMatch(/break-before:\s*avoid/);
     expect(printRule('[data-closing-note] {')).toMatch(/break-inside:\s*avoid;\s*break-before:\s*avoid/);
+    // After a chart (which never splits), the note and the chart move to a new page together.
+    expect(printRule("li:has(> [data-closing-note]):has([data-answer-kind='chart'])")).toMatch(/break-inside:\s*avoid/);
   });
 });
 
