@@ -14,6 +14,7 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   plan_limit: 'You have reached a limit of your plan.',
   dataset_not_ready: 'This file is not ready yet. Wait for it to finish, or try other read options.',
   dataset_expired: 'The source file was removed by the retention policy. Saved answers and reports are kept.',
+  dashboard_not_ready: 'The dashboard is not ready yet. Wait for Analyst to finish planning it.',
   conflict: 'That cannot be done right now because something depends on it.',
   rate_limited: 'Too many requests in a short time. Wait a moment and try again.',
   llm_failed: 'The answer could not be produced this time. Nothing was saved. Please try again.',

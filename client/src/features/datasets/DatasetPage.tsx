@@ -20,8 +20,9 @@ import { ReportsTab } from './workspace/ReportsTab';
 import { TabBar, panelId, tabId } from './workspace/TabBar';
 import { defaultTabFor, tabPath, tabsFor, type WorkspaceTab } from './workspace/tabs';
 
-// Loaded on demand: answers draw charts (Recharts), which are most of the bundle.
+// Loaded on demand: answers and the dashboard draw charts (Recharts), which are most of the bundle.
 const AskTab = lazy(async () => ({ default: (await import('@/features/ask/AskTab')).AskTab }));
+const DashboardTab = lazy(async () => ({ default: (await import('@/features/dashboard/DashboardTab')).DashboardTab }));
 
 function BackLink() {
   return (
@@ -71,9 +72,9 @@ function DatasetView({ dataset, slow, tab }: { dataset: DatasetDetail; slow: boo
   const reparse = useReparseDataset(dataset.id);
   const tabs = tabsFor(dataset.status);
   const active = tabs.find((t) => t.key === tab)?.key;
-  const fallback = defaultTabFor(dataset.status);
+  const fallback = defaultTabFor(dataset.status, { question: new URLSearchParams(location.search).has('q') });
 
-  // No tab, or one this file does not have: open the default tab (keeping ?q= from older links).
+  // No tab, or one this file does not have: open the default tab (older links with ?q= open Ask and still ask).
   if (fallback && !active) {
     return <Navigate to={{ pathname: tabPath(dataset.id, fallback), search: location.search }} replace />;
   }
@@ -120,6 +121,12 @@ function DatasetView({ dataset, slow, tab }: { dataset: DatasetDetail; slow: boo
 
 function TabPanel({ tab, dataset }: { tab: WorkspaceTab; dataset: DatasetDetail }) {
   switch (tab) {
+    case 'dashboard':
+      return (
+        <Suspense fallback={<InlineLoading label="Loading" />}>
+          <DashboardTab dataset={dataset} />
+        </Suspense>
+      );
     case 'data':
       return <DataTab dataset={dataset} />;
     case 'quality':

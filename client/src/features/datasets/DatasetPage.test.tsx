@@ -61,16 +61,16 @@ describe('the file workspace: tabs and their URLs', () => {
   // The label only (the Quality tab adds its score once loaded).
   const tabNames = () => screen.getAllByRole('tab').map((t) => t.firstChild?.textContent);
 
-  it('the old dataset URL opens the default tab, Ask', async () => {
+  it('the old dataset URL opens the default tab, Dashboard', async () => {
     const { router, id } = await openDataset('Bank statement October');
-    const tab = await screen.findByRole('tab', { name: 'Ask' });
+    const tab = await screen.findByRole('tab', { name: 'Dashboard' });
     expect(tab).toHaveAttribute('aria-selected', 'true');
-    expect(at(router)).toBe(`/datasets/${id}/ask`);
-    expect(tabNames()).toEqual(['Data', 'Quality', 'Ask', 'Reports']);
+    expect(at(router)).toBe(`/datasets/${id}/dashboard`);
+    expect(tabNames()).toEqual(['Dashboard', 'Data', 'Quality', 'Ask', 'Reports']);
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', tab.id);
   });
 
-  it.each(['data', 'quality', 'ask', 'reports'])('/%s opens that tab', async (key) => {
+  it.each(['dashboard', 'data', 'quality', 'ask', 'reports'])('/%s opens that tab', async (key) => {
     await openDataset('Bank statement October', `/${key}`);
     const selected = await screen.findByRole('tab', { selected: true });
     expect(selected.getAttribute('href')).toMatch(new RegExp(`/${key}$`));
@@ -78,8 +78,15 @@ describe('the file workspace: tabs and their URLs', () => {
 
   it('an unknown tab opens the default tab', async () => {
     const { router, id } = await openDataset('Bank statement October', '/nonsense');
+    expect(await screen.findByRole('tab', { name: 'Dashboard', selected: true })).toBeInTheDocument();
+    expect(at(router)).toBe(`/datasets/${id}/dashboard`);
+  });
+
+  it('an older link with ?q= (no tab) opens Ask, which asks the question', async () => {
+    const { router, id } = await openDataset('Bank statement October', '?q=What%20are%20my%20biggest%20expenses%3F');
     expect(await screen.findByRole('tab', { name: 'Ask', selected: true })).toBeInTheDocument();
     expect(at(router)).toBe(`/datasets/${id}/ask`);
+    expect(await screen.findByText('What are my biggest expenses?', {}, { timeout: 4000 })).toBeInTheDocument();
   });
 
   it('a tab click adds a history entry, so Back returns to the previous tab', async () => {
@@ -107,10 +114,12 @@ describe('the file workspace: tabs and their URLs', () => {
     await userEvent.keyboard('{End}');
     expect(at(router)).toBe(`/datasets/${id}/reports`);
     await userEvent.keyboard('{ArrowRight}');
-    expect(at(router)).toBe(`/datasets/${id}/data`);
+    expect(at(router)).toBe(`/datasets/${id}/dashboard`);
     await userEvent.keyboard('{ArrowLeft}');
     expect(at(router)).toBe(`/datasets/${id}/reports`);
     await userEvent.keyboard('{Home}');
+    expect(at(router)).toBe(`/datasets/${id}/dashboard`);
+    await userEvent.keyboard('{ArrowRight}');
     expect(at(router)).toBe(`/datasets/${id}/data`);
     // A visible focus ring on the focused tab.
     expect(screen.getByRole('tab', { name: 'Data' }).className).toMatch(/focus-visible:ring-2/);

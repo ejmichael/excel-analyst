@@ -1,0 +1,19 @@
+import { apiFetch } from './client';
+import type { Dashboard, DashboardData, DashboardDataRequest, ID } from './types';
+
+const base = (datasetId: ID) => `/datasets/${encodeURIComponent(datasetId)}/dashboard`;
+
+/** GET /datasets/:id/dashboard (404 not_found until the first POST) */
+export function getDashboard(datasetId: ID, signal?: AbortSignal): Promise<Dashboard> {
+  return apiFetch<Dashboard>(base(datasetId), { signal });
+}
+
+/** POST /datasets/:id/dashboard (202, status 'planning'): one model call, so only on first open, Try again or Rebuild. */
+export function planDashboard(datasetId: ID): Promise<Dashboard> {
+  return apiFetch<Dashboard>(base(datasetId), { method: 'POST' });
+}
+
+/** POST /datasets/:id/dashboard/data: every widget run again under the filters (never calls the model). */
+export function getDashboardData(datasetId: ID, body: DashboardDataRequest, signal?: AbortSignal): Promise<DashboardData> {
+  return apiFetch<DashboardData>(`${base(datasetId)}/data`, { method: 'POST', body, signal });
+}
