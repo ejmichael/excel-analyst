@@ -9,7 +9,7 @@ Plan 6 to 10 widgets. Every widget is one DuckDB query over a single table named
 
 Order and mix:
 - The first 3 or 4 widgets are single-value headline figures (chart type kpi: exactly one row and one numeric column). Good headline figures: a record count; a count of distinct things that matter (customers, businesses, tickets); a total or an average of the most important numeric column, if there is one; the share of records in the most important state.
-- Then breakdowns (bar or pie) of the categories an owner would care about, at most 10 items each.
+- Then breakdowns (bar or pie) of the categories an owner would care about, at most 10 items each. Pie only for up to 6 parts that do not overlap and add up to the whole (every row falls in exactly one slice). Counts of rows that have each of several attributes overlap, so use a bar chart for those.
 - A trend over time (line or area, by month) only when the file has a date column.
 - A table widget only for a short ranked list.
 Choose columns by meaning. Never group by identifiers, free text, or columns with almost as many distinct values as rows. Never select personal-data columns except inside COUNT or COUNT(DISTINCT).

@@ -10,7 +10,8 @@ import {
   type PlannedWidget,
 } from '../../llm/prompts/dashboard.js';
 import type { DashboardFilter, DashboardWidget } from '../../types/api.js';
-import { type SandboxSession, withSandbox } from '../sandbox/sandbox.js';
+import { overlappingPieAsBar } from '../analysis/chartSafety.js';
+import { type QueryResult, type SandboxSession, withSandbox } from '../sandbox/sandbox.js';
 import type { DashboardPlan } from './storage.js';
 import { buildDashboardUser, checkWidget, type DashboardColumn, labelOf, quoteIdent, sampleRows } from './widgets.js';
 
@@ -147,6 +148,7 @@ export async function planDashboard(input: PlanInput, deps: PlanDeps): Promise<P
   // Columns empty in every row are not planned from: not in the prompt, the fallback or the filters. (The sandbox still
   // loads every column.)
   const columns = input.columns.filter((c) => c.distinct_count > 0);
+  const safeChart = (w: PlannedWidget, rows: QueryResult['rows']): PlannedWidget => ({ ...w, chart: overlappingPieAsBar(w.chart, rows, input.rowCount) });
   const pii = new Set(input.columns.filter((c) => c.is_pii).map((c) => c.sql_name.toLowerCase()));
   const report: PlanOutcome['report'] = { planned: 0, kept: 0, repaired: 0, dropped: {}, modelFailed: false, trace: [] };
   const drop = (reason: string) => {
@@ -197,7 +199,7 @@ export async function planDashboard(input: PlanInput, deps: PlanDeps): Promise<P
         const trace: WidgetTrace = { title: parsed.data.title, type: parsed.data.chart.type, width: parsed.data.width, sql: parsed.data.sql, outcome: 'kept' };
         report.trace.push(trace);
         const check = await checkWidget(session, parsed.data, pii);
-        if (check.ok) slots.push({ w: parsed.data, ok: true, trace });
+        if (check.ok) slots.push({ w: safeChart(parsed.data, check.result.rows), ok: true, trace });
         else if (check.kind === 'sql') {
           trace.error = check.error;
           slots.push({ w: parsed.data, ok: false, sqlError: check.error, trace });
@@ -222,7 +224,7 @@ export async function planDashboard(input: PlanInput, deps: PlanDeps): Promise<P
             const check = await checkWidget(session, candidate.data, pii);
             if (check.ok) {
               s.trace.outcome = 'repaired';
-              slots[i] = { w: candidate.data, ok: true, trace: s.trace };
+              slots[i] = { w: safeChart(candidate.data, check.result.rows), ok: true, trace: s.trace };
               report.repaired++;
               continue;
             }

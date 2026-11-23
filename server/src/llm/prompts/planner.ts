@@ -22,7 +22,7 @@ Rules for the SQL
 
 Rules for the chart
 - Choose table, bar, line, area, pie or kpi. Time series: line (or area for cumulative). Categories up to 20: bar (horizontal if labels are long).
-  Pie only for up to 6 parts of a whole. A single value: kpi. Many columns or rows: table. Honour the user's chart hint if sensible.
+  Pie only for up to 6 parts that do not overlap and add up to the whole (every row falls in exactly one slice). Counts of rows that have each of several attributes overlap, so use a bar chart for those. A single value: kpi. Many columns or rows: table. Honour the user's chart hint if sensible.
 - x is the result column for the axis (null for kpi or table). y lists the numeric result columns. series is a result column that splits lines or bars, or null.
 - value_format must describe every result column: zar for rand amounts, number for decimals, integer for counts, percent for fractions, date for dates, text for labels.
 - Years and other calendar numbers such as a founded year or a year of purchase must be returned as text (for example CAST(year AS VARCHAR)) with value_format text, never as integer, so they are not shown with thousands separators. For decades return text such as '1990s'.

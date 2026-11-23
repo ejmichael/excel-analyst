@@ -7,6 +7,7 @@ import { PLAN_ANALYSIS_TOOL, type Plan, PLANNER_MAX_TOKENS, PLANNER_SYSTEM, plan
 import type { BlockCheck, BlockSource, CellValue, ChartSpec, ChartType, ResultColumn } from '../../types/api.js';
 import { type QueryResult, SandboxError, type SandboxErrorCategory, type SandboxSession, withSandbox } from '../sandbox/sandbox.js';
 import { buildNarratorUser, buildPlannerUser, MAX_SAMPLE_ROWS, type PromptColumn } from './prompts.js';
+import { overlappingPieAsBar } from './chartSafety.js';
 import { type ReconcileSkipReason, reconcileSkipReason } from './reconcileGuard.js';
 import { renderNarrative, type RenderResult } from './tokens.js';
 
@@ -322,7 +323,8 @@ export async function ask(input: AskInput, deps: AskDeps): Promise<AskResult> {
       rows,
       row_count: result.rowCount,
       truncated,
-      chart: plan.chart,
+      // W2b: a pie of overlapping counts is shown as a bar (the one change to this pipeline in that part).
+      chart: overlappingPieAsBar(plan.chart, rows, input.rowCount),
       reconcile: plan.reconcile ?? null,
       narrative_template: narrative.narrative_template,
       narrative: rendered.text,

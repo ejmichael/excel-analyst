@@ -76,7 +76,7 @@ Rules for the SQL
 
 Rules for the chart
 - Choose table, bar, line, area, pie or kpi. Time series: line (or area for cumulative). Categories up to 20: bar (horizontal if labels are long).
-  Pie only for up to 6 parts of a whole. A single value: kpi. Many columns or rows: table. Honour the user's chart hint if sensible.
+  Pie only for up to 6 parts that do not overlap and add up to the whole (every row falls in exactly one slice). Counts of rows that have each of several attributes overlap, so use a bar chart for those. A single value: kpi. Many columns or rows: table. Honour the user's chart hint if sensible.
 - x is the result column for the axis (null for kpi or table). y lists the numeric result columns. series is a result column that splits lines or bars, or null.
 - value_format must describe every result column: zar for rand amounts, number for decimals, integer for counts, percent for fractions, date for dates, text for labels.
 - Years and other calendar numbers such as a founded year or a year of purchase must be returned as text (for example CAST(year AS VARCHAR)) with value_format text, never as integer, so they are not shown with thousands separators. For decades return text such as '1990s'.
@@ -216,7 +216,7 @@ Plan 6 to 10 widgets. Every widget is one DuckDB query over a single table named
 
 Order and mix:
 - The first 3 or 4 widgets are single-value headline figures (chart type kpi: exactly one row and one numeric column). Good headline figures: a record count; a count of distinct things that matter (customers, businesses, tickets); a total or an average of the most important numeric column, if there is one; the share of records in the most important state.
-- Then breakdowns (bar or pie) of the categories an owner would care about, at most 10 items each.
+- Then breakdowns (bar or pie) of the categories an owner would care about, at most 10 items each. Pie only for up to 6 parts that do not overlap and add up to the whole (every row falls in exactly one slice). Counts of rows that have each of several attributes overlap, so use a bar chart for those.
 - A trend over time (line or area, by month) only when the file has a date column.
 - A table widget only for a short ranked list.
 Choose columns by meaning. Never group by identifiers, free text, or columns with almost as many distinct values as rows. Never select personal-data columns except inside COUNT or COUNT(DISTINCT).
