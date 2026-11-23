@@ -32,7 +32,7 @@ export function Widget({ widget, result, filtered }: WidgetProps) {
   return (
     <section
       aria-labelledby={headingId}
-      className={cn('flex min-w-0 flex-col gap-3 rounded-2xl border bg-card p-4 sm:p-5', widthClass(widget.width))}
+      className={cn('flex min-w-0 flex-col gap-2.5 rounded-2xl border bg-card p-4', widthClass(widget.width))}
       data-widget={widget.id}
       data-width={widget.width}
     >
@@ -121,6 +121,27 @@ function TableWidget({ widget, result }: { widget: DashboardWidget; result: Widg
 function Working({ widget, result }: { widget: DashboardWidget; result: WidgetResult }) {
   const [open, setOpen] = useState(false);
   const id = useId();
+  // A headline tile: a small text button in its bottom corner; the working opens below the number while needed.
+  if (widget.chart.type === 'kpi') {
+    return (
+      <div className="mt-auto">
+        <div className="-mr-2 -mb-2 flex justify-end">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={id}
+            onClick={() => setOpen((o) => !o)}
+            className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            data-working-toggle
+          >
+            {open ? 'Hide the working' : 'Show the working'}
+            <ChevronDown className={cn('size-3.5 shrink-0', open && 'rotate-180')} aria-hidden />
+          </button>
+        </div>
+        {open && <WorkingPanel id={id} widget={widget} result={result} className="mt-2 rounded-lg border bg-background" />}
+      </div>
+    );
+  }
   return (
     <div className="mt-auto rounded-lg border bg-background">
       <h4 className="font-sans text-sm">
@@ -129,36 +150,40 @@ function Working({ widget, result }: { widget: DashboardWidget; result: WidgetRe
           aria-expanded={open}
           aria-controls={id}
           onClick={() => setOpen((o) => !o)}
-          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left font-semibold focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-3 py-1 text-left font-semibold focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           Show the working
           <ChevronDown className={cn('size-4 shrink-0', open && 'rotate-180')} aria-hidden />
         </button>
       </h4>
-      {open && (
-        <div id={id} className="space-y-4 border-t px-3 py-3" data-working>
-          <p className="text-sm">Analyst wrote this query when it planned the dashboard; the server runs it on your file each time.</p>
-          <SqlPanel sql={widget.sql} />
-          {result.error && (
-            <p className="text-sm">
-              <span className="font-medium">What went wrong:</span> {result.error}
-            </p>
-          )}
-          {result.checks.length > 0 && (
-            <div className="space-y-2">
-              <h5 className="font-sans text-sm font-semibold">Checks</h5>
-              <ChecksList block={{ checks: result.checks, chart: widget.chart, columns: result.columns }} />
-            </div>
-          )}
-          {!result.error && (
-            <div className="space-y-2">
-              <h5 className="font-sans text-sm font-semibold">The result</h5>
-              {result.rows.length === 0 ? (
-                <p className="text-sm">No rows.</p>
-              ) : (
-                <ResultTable columns={tableColumns(widget, result)} rows={result.rows} label={`Result rows: ${widget.title}`} />
-              )}
-            </div>
+      {open && <WorkingPanel id={id} widget={widget} result={result} className="border-t" />}
+    </div>
+  );
+}
+
+function WorkingPanel({ id, widget, result, className }: { id: string; widget: DashboardWidget; result: WidgetResult; className: string }) {
+  return (
+    <div id={id} className={cn('space-y-3 px-3 py-2.5', className)} data-working>
+      <p className="text-sm">Analyst wrote this query when it planned the dashboard; the server runs it on your file each time.</p>
+      <SqlPanel sql={widget.sql} />
+      {result.error && (
+        <p className="text-sm">
+          <span className="font-medium">What went wrong:</span> {result.error}
+        </p>
+      )}
+      {result.checks.length > 0 && (
+        <div className="space-y-2">
+          <h5 className="font-sans text-sm font-semibold">Checks</h5>
+          <ChecksList block={{ checks: result.checks, chart: widget.chart, columns: result.columns }} />
+        </div>
+      )}
+      {!result.error && (
+        <div className="space-y-2">
+          <h5 className="font-sans text-sm font-semibold">The result</h5>
+          {result.rows.length === 0 ? (
+            <p className="text-sm">No rows.</p>
+          ) : (
+            <ResultTable columns={tableColumns(widget, result)} rows={result.rows} label={`Result rows: ${widget.title}`} />
           )}
         </div>
       )}

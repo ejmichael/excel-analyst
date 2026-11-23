@@ -52,7 +52,8 @@ describe('every way into the parse dialog says "Check how we read your file"', (
   });
 
   it('a file without warnings: Change in the "How we read this file" bar opens the same dialog', async () => {
-    await openDataset('Bank statement October');
+    // On the Data tab, so the test does not wait for the chart bundle the Dashboard loads.
+    await openDataset('Bank statement October', '/data');
     const bar = (await screen.findByText('How we read this file:')).closest('section')!;
     expect(bar).toHaveTextContent('Columns are separated by');
     await userEvent.click(within(bar).getByRole('button', { name: 'Change how we read this file' }));

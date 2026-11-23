@@ -54,6 +54,32 @@ describe('kpi tiles', () => {
     expect(within(card()).getAllByRole('button').map((b) => b.textContent)).toEqual(['Show the working']);
   });
 
+  it('a small "Show the working" text button in the corner opens the working below the number (keyboard too)', async () => {
+    show(widget('k', { title: 'Orders' }), result('k'));
+    const toggle = screen.getByRole('button', { name: 'Show the working' });
+    // Not the full-width bar other widgets have.
+    expect(toggle.className).not.toMatch(/w-full/);
+    expect(toggle.className).toMatch(/text-xs/);
+    expect(toggle.className).toMatch(/min-h-11/);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    toggle.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle).toHaveAccessibleName('Hide the working');
+    const panel = document.getElementById(toggle.getAttribute('aria-controls')!)!;
+    expect(panel).toHaveAttribute('data-working');
+    expect(within(panel).getByText(/SELECT count/)).toBeInTheDocument();
+    const number = document.querySelector('[data-kpi-value]')!;
+    expect(number.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await userEvent.keyboard(' ');
+    expect(document.querySelector('[data-working]')).not.toBeInTheDocument();
+  });
+
+  it('other widgets keep the full-width disclosure at the bottom', () => {
+    show(byProduct, productRows);
+    expect(screen.getByRole('button', { name: 'Show the working' }).className).toMatch(/w-full/);
+  });
+
   it('the value comes from the first row and the first y column only', () => {
     show(
       widget('k', { chart: chart('kpi', null, ['b', 'a'], { a: 'integer', b: 'integer' }) }),
