@@ -6,6 +6,7 @@ import { ColumnEvidence, inferSemantic, normaliseValue } from './infer.js';
 import { findHeaderRow, isBlank, isTotalRow, width } from './layout.js';
 import type { DecimalSeparator } from './numbers.js';
 import { openCsv, openXlsx, ParseFailure, type Row, type RowSource, TOO_SLOW } from './sources.js';
+import { errorWarnings, scrubErrors } from './spreadsheetErrors.js';
 
 /**
  * The profiling pipeline (ARCHITECTURE 2b-2f and 6), as plain functions over a file buffer:
@@ -112,14 +113,18 @@ export async function profileFile(input: ProfileInput): Promise<ProfileResult> {
   let blankRows = 0;
   let widerRows = 0;
   let overCap = false;
-  let pending: Row[] = [];
-  const addRow = (row: Row) => {
+  let pending: Array<{ row: Row; errors: number[] }> = [];
+  const errorCounts = new Array<number>(w).fill(0);
+  const addRow = (row: Row, errors: number[]) => {
     dataRows++;
+    for (const c of errors) if (c < w) errorCounts[c]!++;
     for (let c = 0; c < w; c++) evidence[c]!.add(row.cells[c] ?? '');
     if (width(row.cells) > w) widerRows++;
   };
   for await (const row of src.rows(signal)) {
     if (row.n <= headerRow) continue;
+    // Spreadsheet errors are empty before anything looks at the row (type detection, totals, blank rows).
+    const errors = scrubErrors(row.cells);
     if (isBlank(row.cells)) {
       blankRows++;
       continue;
@@ -127,18 +132,18 @@ export async function profileFile(input: ProfileInput): Promise<ProfileResult> {
     // Total rows only count as footers when nothing but totals and blanks follows them.
     // Bounded: past MAX_PENDING_TOTALS the "totals" are data, not a footer, so stop holding them back.
     if (isTotalRow(row.cells) && pending.length < MAX_PENDING_TOTALS) {
-      pending.push(row);
+      pending.push({ row, errors });
       continue;
     }
-    for (const p of pending) addRow(p);
+    for (const p of pending) addRow(p.row, p.errors);
     pending = [];
-    addRow(row);
+    addRow(row, errors);
     if (dataRows > ROW_COUNT_CAP) {
       overCap = true;
       break;
     }
   }
-  const trailing = new Set(pending.map((r) => r.n));
+  const trailing = new Set(pending.map((p) => p.row.n));
   if (dataRows > input.maxRows) {
     const found = overCap ? `more than ${groupDigits(ROW_COUNT_CAP)}` : groupDigits(dataRows);
     throw new ParseFailure(`Your plan allows ${groupDigits(input.maxRows)} rows; this file has ${found}.`, {
@@ -177,6 +182,7 @@ export async function profileFile(input: ProfileInput): Promise<ProfileResult> {
 
   const { names, renamed } = cleanHeaders(header.cells.slice(0, w));
   const sqlNames = toSqlNames(names);
+  warnings.push(...errorWarnings(names, errorCounts));
   if (renamed > 0) warnings.push(`${plural(renamed, 'column header was', 'column headers were')} empty or repeated, so we renamed them.`);
   if (widerRows > 0) warnings.push(`${plural(widerRows, 'row has', 'rows have')} more values than there are headers; the extra values were left out.`);
   if (excludedRows > 0) warnings.push(`We left out ${plural(excludedRows, 'empty or total row', 'empty or total rows')}.`);
@@ -197,7 +203,9 @@ export async function profileFile(input: ProfileInput): Promise<ProfileResult> {
   let batch: string[] = [sqlNames.map(escapeCsv).join(',')];
   let written = 0;
   for await (const row of src.rows(signal)) {
-    if (row.n <= headerRow || isBlank(row.cells) || trailing.has(row.n)) continue;
+    if (row.n <= headerRow) continue;
+    scrubErrors(row.cells);
+    if (isBlank(row.cells) || trailing.has(row.n)) continue;
     if (written >= dataRows) break;
     written++;
     const values = new Array<string>(w);

@@ -1,5 +1,6 @@
 import { SaxesParser, type SaxesTagPlain } from 'saxes';
 import { listEntries, readEntry, streamEntryText, type ZipEntry } from './zip.js';
+import { isSpreadsheetError } from './spreadsheetErrors.js';
 
 /**
  * A small streaming XLSX reader: zip entries are found through the central directory (any order),
@@ -321,7 +322,8 @@ export async function* readSheetRows(
             out = c.value === '1' ? 'true' : c.value === '0' ? 'false' : '';
             break;
           case 'e':
-            out = '';
+            // A formula error: keep its code so the pipeline can count it and read it as empty.
+            out = isSpreadsheetError(c.value) ? c.value : '#ERROR!';
             break;
           case 'd':
             out = c.value.replace(/Z$/, '').replace(/T00:00:00(\.0+)?$/, '');

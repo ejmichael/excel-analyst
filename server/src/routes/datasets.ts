@@ -350,6 +350,9 @@ datasetsRouter.post('/datasets/:id/reparse', requireUuidParam(), validate({ body
     .maybeSingle<DatasetRow>();
   throwIfDbError('datasets: reparse', error);
   if (!row) throw new AppError('conflict', 'This file is still being read. Wait for it to finish, then try again.');
+  // The dashboard was planned from the old reading: delete it so the client plans a fresh one.
+  const { error: dashError } = await supabaseAdmin().from('dashboards').delete().eq('dataset_id', id).eq('owner_id', userId);
+  throwIfDbError('datasets: reparse dashboard', dashError);
   ok(res, toDataset(row), 202);
   enqueueProfiling({ datasetId: id, ownerId: userId, overrides: options });
 });
