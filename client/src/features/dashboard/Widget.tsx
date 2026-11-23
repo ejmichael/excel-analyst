@@ -93,7 +93,7 @@ function WidgetBody({ widget, result, filtered }: WidgetProps) {
     );
   }
   if (widget.chart.type === 'table') return <TableWidget widget={widget} result={result} />;
-  return <BlockChart block={{ title: widget.title, chart: widget.chart, columns: result.columns, rows: result.rows }} />;
+  return <BlockChart block={{ title: widget.title, chart: widget.chart, columns: result.columns, rows: result.rows }} readable />;
 }
 
 function tableColumns(widget: DashboardWidget, result: WidgetResult) {

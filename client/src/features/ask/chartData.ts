@@ -242,3 +242,36 @@ export function valueAxis(model: Extract<ChartModel, { kind: 'cartesian' }>): { 
   const smallRange = !model.stacked && values.every((v) => v >= 0) && top >= 1 && top <= VALUE_TICKS - 1;
   return { allowDecimals: false, tickCount: smallRange ? top + 1 : VALUE_TICKS };
 }
+
+/** Dashboard bar charts: a vertical chart is drawn horizontally when a category label is longer than this... */
+export const VERTICAL_LABEL_MAX = 10;
+/** ...or when it has more categories than this. */
+export const VERTICAL_CATEGORIES_MAX = 6;
+/** A category label up to this long is shown in full (on up to two lines); longer ones are cut with an ellipsis. */
+export const FULL_LABEL_MAX = 28;
+/** A label up to this long stays on one line; longer ones wrap. */
+const SINGLE_LINE_MAX = 18;
+/** The shortest line a wrapped label is given. */
+const MIN_LINE = 12;
+
+/** True when a dashboard bar chart reads better on its side: long category labels, or many categories. Layout only. */
+export function needsHorizontal(model: Extract<ChartModel, { kind: 'cartesian' }>): boolean {
+  return model.type === 'bar' && (model.data.length > VERTICAL_CATEGORIES_MAX || model.data.some((p) => p.xLabel.length > VERTICAL_LABEL_MAX));
+}
+
+/**
+ * A dashboard category label as one or two lines: one line up to SINGLE_LINE_MAX characters; in full on two lines up to
+ * FULL_LABEL_MAX (the narrowest width that fits); otherwise two lines ending in an ellipsis. The full text stays in the tooltip and
+ * the table view.
+ */
+export function readableLines(text: string): string[] {
+  if (text.length <= SINGLE_LINE_MAX) return [text];
+  if (text.length <= FULL_LABEL_MAX) {
+    for (let width = MIN_LINE; width <= text.length; width++) {
+      const lines = wrapLabel(text, width);
+      if (!lines.some((l) => l.endsWith('…'))) return lines;
+    }
+    return [text];
+  }
+  return wrapLabel(text, FULL_LABEL_MAX / 2);
+}

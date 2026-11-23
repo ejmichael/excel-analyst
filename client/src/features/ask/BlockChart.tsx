@@ -21,7 +21,17 @@ import { BarChart3, Table2 } from 'lucide-react';
 import type { Block, ValueFormat } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { formatNumber, formatValue } from '@/lib/format';
-import { buildChartModel, formatOf, groupKeyColumns, shortLabel, valueAxis, wrapLabel, type ChartModel } from './chartData';
+import {
+  buildChartModel,
+  formatOf,
+  groupKeyColumns,
+  needsHorizontal,
+  readableLines,
+  shortLabel,
+  valueAxis,
+  wrapLabel,
+  type ChartModel,
+} from './chartData';
 import { SERIES_COLOURS, colourAt, dashAt, fillAt, hatchId, isHatched, swatchAt } from './chartPalette';
 import { ResultTable } from './ResultTable';
 
@@ -70,8 +80,23 @@ function CategoryTick(props: {
   visibleTicksCount?: number;
   /** A report document's horizontal bars: wrap the label at about this many characters. */
   wrapAt?: number;
+  /** A dashboard's horizontal bars: the label in full on up to two lines (see readableLines). */
+  readable?: boolean;
 }) {
   const full = String(props.payload?.value ?? '');
+  if (props.readable) {
+    const lines = readableLines(full);
+    return (
+      <text x={props.x} y={props.y} textAnchor="end" fontSize={12} fill="var(--muted-foreground)">
+        <title>{full}</title>
+        {lines.map((line, i) => (
+          <tspan key={i} x={props.x} dy={i === 0 ? (lines.length === 1 ? 4 : -3) : 14}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    );
+  }
   if (props.wrapAt) {
     // A report document: up to two lines in the label column, then an ellipsis.
     const lines = wrapLabel(full, props.wrapAt);
@@ -145,8 +170,40 @@ function HatchDefs({ chartId, count }: { chartId: string; count: number }) {
 /** On a report document, the category labels of horizontal bars get about this share of the chart's width. */
 export const DOCUMENT_LABEL_SHARE = 0.36;
 
-/** Takes the parts of an answer it draws, so a dashboard widget's result can use it too. */
-export function BlockChart({ block, look = 'app' }: { block: Pick<Block, 'title' | 'chart' | 'columns' | 'rows'>; look?: ChartLook }) {
+/** Roughly the width of one 12px label character, for a dashboard's horizontal label column. */
+const LABEL_CHAR_PX = 7;
+
+/** The label column of a dashboard's horizontal bars: wide enough for its longest line, at most 45% of the chart. */
+export function readableAxisWidth(labels: string[], chartWidth: number): number {
+  const longest = Math.max(4, ...labels.flatMap(readableLines).map((l) => l.length));
+  const wanted = longest * LABEL_CHAR_PX + 12;
+  return Math.max(64, Math.min(wanted, chartWidth > 0 ? chartWidth * 0.45 : 220));
+}
+
+/**
+ * Where a tooltip goes: offset from the pointer (below the bar it describes, or above it near the bottom), and kept
+ * within the plot area, so it never covers the axis labels or the bar, and is never cut off at the card's edge.
+ */
+export const TOOLTIP_PLACEMENT = {
+  offset: 28,
+  allowEscapeViewBox: { x: false, y: false },
+  wrapperStyle: { zIndex: 20, pointerEvents: 'none' as const },
+};
+
+/**
+ * Takes the parts of an answer it draws, so a dashboard widget's result can use it too. `readable` (dashboard widgets
+ * only): bar charts with long or many category labels are drawn on their side with the labels in full, and a donut's
+ * legend has one entry per line.
+ */
+export function BlockChart({
+  block,
+  look = 'app',
+  readable = false,
+}: {
+  block: Pick<Block, 'title' | 'chart' | 'columns' | 'rows'>;
+  look?: ChartLook;
+  readable?: boolean;
+}) {
   const model = useMemo(() => buildChartModel(block), [block]);
   const keys = useMemo(() => groupKeyColumns(block), [block]);
   const [asTable, setAsTable] = useState(model.kind === 'table');
@@ -185,12 +242,22 @@ export function BlockChart({ block, look = 'app' }: { block: Pick<Block, 'title'
           </Button>
         </div>
       )}
-      <div id={tableId}>{asTable || model.kind === 'table' ? table : <ChartView model={model} ariaLabel={ariaLabel} look={look} />}</div>
+      <div id={tableId}>{asTable || model.kind === 'table' ? table : <ChartView model={model} ariaLabel={ariaLabel} look={look} readable={readable} />}</div>
     </div>
   );
 }
 
-function ChartView({ model, ariaLabel, look }: { model: Exclude<ChartModel, { kind: 'empty' } | { kind: 'table' }>; ariaLabel: string; look: ChartLook }) {
+function ChartView({
+  model,
+  ariaLabel,
+  look,
+  readable,
+}: {
+  model: Exclude<ChartModel, { kind: 'empty' } | { kind: 'table' }>;
+  ariaLabel: string;
+  look: ChartLook;
+  readable: boolean;
+}) {
   if (model.kind === 'kpi') {
     return (
       <div role="img" aria-label={`${ariaLabel}. ${model.label}: ${formatValue(model.value, model.format)}`} data-kpi className="rounded-lg border bg-background p-5">
@@ -204,11 +271,11 @@ function ChartView({ model, ariaLabel, look }: { model: Exclude<ChartModel, { ki
     );
   }
 
-  if (model.kind === 'pie') return <PieView model={model} ariaLabel={ariaLabel} />;
-  return <CartesianView model={model} ariaLabel={ariaLabel} look={look} />;
+  if (model.kind === 'pie') return <PieView model={model} ariaLabel={ariaLabel} readable={readable} />;
+  return <CartesianView model={model} ariaLabel={ariaLabel} look={look} readable={readable} />;
 }
 
-function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie' }>; ariaLabel: string }) {
+function PieView({ model, ariaLabel, readable }: { model: Extract<ChartModel, { kind: 'pie' }>; ariaLabel: string; readable: boolean }) {
   const chartId = svgId(useId());
   return (
     <div className="space-y-3">
@@ -230,27 +297,50 @@ function PieView({ model, ariaLabel }: { model: Extract<ChartModel, { kind: 'pie
                 <Cell key={s.name} fill={fillAt(chartId, i)} />
               ))}
             </Pie>
-            <Tooltip formatter={(v) => formatValue(v as number, model.format)} />
+            <Tooltip {...TOOLTIP_PLACEMENT} formatter={(v) => formatValue(v as number, model.format)} />
           </PieChart>
         </ResponsiveContainer>
       </div>
       {/* Labels and values written out, not only in colour. */}
-      <ul className="grid gap-1.5 text-sm sm:grid-cols-2">
-        {model.slices.map((s, i) => (
-          <li key={s.name} className="flex items-center gap-2">
-            <span className="size-3 shrink-0 rounded-sm" style={{ background: swatchAt(i) }} aria-hidden />
-            <span className="min-w-0 flex-1 truncate" title={s.label}>
-              {s.label}
-            </span>
-            <span className="tabular font-medium">{formatValue(s.value, model.format)}</span>
-          </li>
-        ))}
-      </ul>
+      {readable ? (
+        // One entry per line: swatch, label (always shown, wrapping on a phone), value.
+        <ul className="space-y-1.5 text-sm" aria-label="Legend" data-pie-legend>
+          {model.slices.map((s, i) => (
+            <li key={s.name} className="flex items-start gap-2">
+              <span className="mt-1 size-3 shrink-0 rounded-sm" style={{ background: swatchAt(i) }} aria-hidden />
+              <span className="min-w-0 flex-1 break-words">{s.label}</span>
+              <span className="tabular font-medium whitespace-nowrap">{formatValue(s.value, model.format)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="grid gap-1.5 text-sm sm:grid-cols-2">
+          {model.slices.map((s, i) => (
+            <li key={s.name} className="flex items-center gap-2">
+              <span className="size-3 shrink-0 rounded-sm" style={{ background: swatchAt(i) }} aria-hidden />
+              <span className="min-w-0 flex-1 truncate" title={s.label}>
+                {s.label}
+              </span>
+              <span className="tabular font-medium">{formatValue(s.value, model.format)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
-function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, { kind: 'cartesian' }>; ariaLabel: string; look: ChartLook }) {
+function CartesianView({
+  model,
+  ariaLabel,
+  look,
+  readable,
+}: {
+  model: Extract<ChartModel, { kind: 'cartesian' }>;
+  ariaLabel: string;
+  look: ChartLook;
+  readable: boolean;
+}) {
   // The drawn width, for the document look's label column (layout only, never a figure).
   const [measuredWidth, setChartWidth] = useState(0);
   const printing = look === 'print';
@@ -258,7 +348,8 @@ function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, 
   // In print the chart is drawn at the page's content width, not the screen's.
   const chartWidth = printing ? PRINT_CHART_WIDTH : measuredWidth;
   const documentLabels = look !== 'app' && chartWidth > 0;
-  const horizontal = model.type === 'bar' && model.orientation === 'horizontal';
+  // A dashboard draws a bar chart with long or many category labels on its side: the same data, order and values.
+  const horizontal = model.type === 'bar' && (model.orientation === 'horizontal' || (readable && needsHorizontal(model)));
   // xLabel comes from the model: formatted, and "(blank)" for a missing key.
   const data = model.data;
   const labelled = data.length * model.series.length <= MAX_LABELLED_VALUES;
@@ -268,10 +359,12 @@ function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, 
   // Ticks from the chart library's scale: whole numbers only on a whole-number axis (see valueAxis).
   const axis = valueAxis(model);
   // On a report document bars keep a sensible thickness rather than filling the band.
-  const maxBarSize = look === 'app' ? undefined : horizontal ? 18 : 56;
+  // A dashboard's horizontal bars stay thin enough for the tooltip (offset below the pointer) to clear them.
+  const maxBarSize = look === 'app' ? (readable && horizontal ? 24 : undefined) : horizontal ? 18 : 56;
   const formatFor = (key: string) => model.series.find((s) => s.key === key)?.format ?? firstFormat;
   const tooltip = (
     <Tooltip
+      {...TOOLTIP_PLACEMENT}
       formatter={(value, _name, item) => formatValue(value as number, formatFor(String(item.dataKey)))}
       labelFormatter={(l) => String(l)}
     />
@@ -301,6 +394,14 @@ function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, 
         dataKey="xLabel"
         width={chartWidth * DOCUMENT_LABEL_SHARE}
         tick={<CategoryTick horizontal wrapAt={(chartWidth * DOCUMENT_LABEL_SHARE) / 6.5} />}
+        interval={0}
+      />
+    ) : readable ? (
+      <YAxis
+        type="category"
+        dataKey="xLabel"
+        width={readableAxisWidth(data.map((d) => d.xLabel), measuredWidth)}
+        tick={<CategoryTick horizontal readable />}
         interval={0}
       />
     ) : (
@@ -384,7 +485,7 @@ function CartesianView({ model, ariaLabel, look }: { model: Extract<ChartModel, 
         );
 
   return (
-    <div role="img" aria-label={ariaLabel} className="w-full" style={{ height }}>
+    <div role="img" aria-label={ariaLabel} className="w-full" style={{ height }} data-orientation={horizontal ? 'horizontal' : 'vertical'}>
       {printing ? (
         // In print: drawn at the page's content width and the print height (no screen measurement).
         cloneElement(chart, { width: chartWidth, height })

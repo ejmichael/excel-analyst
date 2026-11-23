@@ -42,7 +42,7 @@ export function TabBar({ datasetId, tabs, active, badges = {} }: TabBarProps) {
   };
 
   return (
-    <div className="-mx-4 overflow-x-auto border-b px-4 sm:mx-0 sm:px-0">
+    <div className="-mx-4 overflow-x-auto overflow-y-hidden border-b px-4 sm:mx-0 sm:px-0">
       <div role="tablist" aria-label="Parts of this file" className="flex min-w-max gap-1" onKeyDown={onKeyDown}>
         {tabs.map((t) => {
           const selected = t.key === active;
@@ -66,10 +66,11 @@ export function TabBar({ datasetId, tabs, active, badges = {} }: TabBarProps) {
               }}
               className={cn(
                 'relative inline-flex min-h-11 items-center gap-2 rounded-t-md px-4 text-sm font-medium outline-none',
-                'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                // The active tab: a 3px green underline over the bar's own border.
+                // Inset: the row hides overflow, so an outer ring would be cut off.
+                'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+                // The active tab: a 3px green underline on the bar's own border.
                 selected
-                  ? 'text-foreground after:absolute after:inset-x-2 after:-bottom-px after:h-[3px] after:rounded-full after:bg-primary'
+                  ? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:rounded-full after:bg-primary'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
