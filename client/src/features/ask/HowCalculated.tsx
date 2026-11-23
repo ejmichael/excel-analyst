@@ -34,7 +34,7 @@ export function reconcileFormat(block: Pick<Block, 'chart' | 'columns'>): ValueF
   return numeric.size === 1 ? ([...numeric][0] as ValueFormat) : 'number';
 }
 
-export function ChecksList({ block }: { block: Block }) {
+export function ChecksList({ block }: { block: Pick<Block, 'checks' | 'chart' | 'columns'> }) {
   const format = reconcileFormat(block);
   return (
     <ul className="space-y-2" aria-label="Checks">

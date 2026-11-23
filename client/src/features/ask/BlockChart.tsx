@@ -145,7 +145,8 @@ function HatchDefs({ chartId, count }: { chartId: string; count: number }) {
 /** On a report document, the category labels of horizontal bars get about this share of the chart's width. */
 export const DOCUMENT_LABEL_SHARE = 0.36;
 
-export function BlockChart({ block, look = 'app' }: { block: Block; look?: ChartLook }) {
+/** Takes the parts of an answer it draws, so a dashboard widget's result can use it too. */
+export function BlockChart({ block, look = 'app' }: { block: Pick<Block, 'title' | 'chart' | 'columns' | 'rows'>; look?: ChartLook }) {
   const model = useMemo(() => buildChartModel(block), [block]);
   const keys = useMemo(() => groupKeyColumns(block), [block]);
   const [asTable, setAsTable] = useState(model.kind === 'table');

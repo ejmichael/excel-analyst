@@ -34,6 +34,12 @@ const ANSWER_FILES = [
   '../datasets/workspace/DataTab.tsx',
   '../datasets/workspace/DataTable.tsx',
   '../datasets/workspace/QualityTab.tsx',
+  // The dashboard (Part W2): every figure comes from a widget's result; only counts the server sent are written.
+  '../dashboard/DashboardTab.tsx',
+  '../dashboard/DashboardBody.tsx',
+  '../dashboard/FilterBar.tsx',
+  '../dashboard/Widget.tsx',
+  '../dashboard/filters.ts',
 ];
 
 const FORBIDDEN: Array<[RegExp, string]> = [
