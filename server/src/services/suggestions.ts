@@ -48,7 +48,9 @@ const label = (c: PromptColumn) => c.display_name ?? c.name;
  * ([email], [phone], [id], [name], [address]) and never with min/max values.
  */
 export function buildSuggestionsPrompt(input: SuggestionsInput): { user: string; droppedColumns: number } {
-  const columns = input.columns.slice(0, MAX_PROMPT_COLUMNS);
+  // A column empty in every row says nothing about the file: it is left out (schema and samples).
+  const withValues = input.columns.filter((c) => c.distinct_count > 0);
+  const columns = withValues.slice(0, MAX_PROMPT_COLUMNS);
   const lines = columns.map((c) => {
     const parts: string[] = [c.data_type, c.semantic];
     if (!c.is_pii && c.min_value !== null && c.max_value !== null) parts.push(`${cell(c.min_value)}..${cell(c.max_value)}`);
@@ -68,7 +70,7 @@ export function buildSuggestionsPrompt(input: SuggestionsInput): { user: string;
     ...table,
     '</data>',
   ].join('\n');
-  return { user, droppedColumns: Math.max(0, input.columns.length - columns.length) };
+  return { user, droppedColumns: Math.max(0, withValues.length - columns.length) };
 }
 
 export const SUGGESTIONS_FAILED_WARNING = 'We could not generate suggested questions.';

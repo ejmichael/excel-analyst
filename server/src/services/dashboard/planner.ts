@@ -144,6 +144,9 @@ const toWidget = (w: PlannedWidget, position: number): DashboardWidget => ({ id:
 
 export async function planDashboard(input: PlanInput, deps: PlanDeps): Promise<PlanOutcome> {
   const sandbox = deps.sandbox ?? withSandbox;
+  // Columns empty in every row are not planned from: not in the prompt, the fallback or the filters. (The sandbox still
+  // loads every column.)
+  const columns = input.columns.filter((c) => c.distinct_count > 0);
   const pii = new Set(input.columns.filter((c) => c.is_pii).map((c) => c.sql_name.toLowerCase()));
   const report: PlanOutcome['report'] = { planned: 0, kept: 0, repaired: 0, dropped: {}, modelFailed: false, trace: [] };
   const drop = (reason: string) => {
@@ -153,7 +156,7 @@ export async function planDashboard(input: PlanInput, deps: PlanDeps): Promise<P
   const request = {
     role: 'planner' as const,
     system: DASHBOARD_SYSTEM,
-    user: buildDashboardUser({ datasetName: input.datasetName, rowCount: input.rowCount, columns: input.columns, sampleRows: sampleRows(input.csv) }),
+    user: buildDashboardUser({ datasetName: input.datasetName, rowCount: input.rowCount, columns, sampleRows: sampleRows(input.csv) }),
     tool: PLAN_DASHBOARD_TOOL,
     schema: dashboardPlanSchema,
     maxTokens: DASHBOARD_MAX_TOKENS,
@@ -230,7 +233,7 @@ export async function planDashboard(input: PlanInput, deps: PlanDeps): Promise<P
         }
       }
       kept = slots.filter((s) => s.ok).map((s) => s.w);
-      filters = await buildFilters(session, input.columns, plan.date_column, plan.filter_columns);
+      filters = await buildFilters(session, columns, plan.date_column, plan.filter_columns);
     } else {
       report.modelFailed = true;
     }
@@ -249,19 +252,19 @@ export async function planDashboard(input: PlanInput, deps: PlanDeps): Promise<P
     }
 
     // ----- the fallback, in code -----
-    const built = fallbackWidgets(input.columns);
+    const built = fallbackWidgets(columns);
     const usable: PlannedWidget[] = [];
     for (const w of built.widgets) if ((await checkWidget(session, w, pii)).ok) usable.push(w);
     if (usable.length < MIN_FALLBACK_WIDGETS) {
       return { status: 'failed' as const, fallback: true, error_message: FAILED_MESSAGE, plan: { reading: { text: '', date_column: null }, filters: [], widgets: [] }, report };
     }
-    const fbFilters = await buildFilters(session, input.columns, built.dateColumn, built.categories);
+    const fbFilters = await buildFilters(session, columns, built.dateColumn, built.categories);
     const date = fbFilters.find((f) => f.kind === 'date_range')?.column ?? null;
     return {
       status: 'ready' as const,
       fallback: true,
       error_message: null,
-      plan: { reading: { text: fallbackReading(input.columns, built.categories, date), date_column: date }, filters: fbFilters, widgets: usable.map(toWidget) },
+      plan: { reading: { text: fallbackReading(columns, built.categories, date), date_column: date }, filters: fbFilters, widgets: usable.map(toWidget) },
       report,
     };
   });
