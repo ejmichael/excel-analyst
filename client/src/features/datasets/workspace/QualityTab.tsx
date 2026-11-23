@@ -185,11 +185,16 @@ function Issues({ quality, dataset }: { quality: DatasetQuality; dataset: Datase
   );
 }
 
+/** Issues whose rows the Data tab's search cannot isolate: they get no "See the rows" link. */
+export const UNSEARCHABLE_KINDS = new Set<QualityIssue['kind']>(['inconsistent_case', 'stray_whitespace']);
+
 /**
  * "See the rows" can only work when the Data tab's search can find them: the issue names a text column and has an
- * example (none for private columns) short enough to search for.
+ * example (none for private columns) short enough to search for, and is not one of UNSEARCHABLE_KINDS.
  */
 export function seeRowsSearch(issue: QualityIssue, dataset: DatasetDetail): string | null {
+  // The search ignores case and spaces at the ends, so it would show every spelling, not the affected rows.
+  if (UNSEARCHABLE_KINDS.has(issue.kind)) return null;
   const column = dataset.columns.find((c) => c.sql_name === issue.column);
   const example = issue.examples[0]?.trim();
   if (!column || column.data_type !== 'text' || !example || example.length > MAX_SEARCH) return null;

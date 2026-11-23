@@ -23,6 +23,7 @@ import {
 } from './datasetFixtures';
 import { seedDemoBlocks } from './blocks';
 import { mockQuality } from './quality';
+import { routeDashboard, type MockDashboardState } from './dashboards';
 
 export interface MockDataset {
   detail: DatasetDetail;
@@ -32,6 +33,8 @@ export interface MockDataset {
   final_status: 'ready' | 'failed';
   final_error: string | null;
   final_error_details: PlanLimitDetails | null;
+  /** The file's dashboard, once one has been asked for. */
+  dashboard?: MockDashboardState;
 }
 
 /** How long a mock upload or reparse stays in 'profiling'. */
@@ -346,7 +349,7 @@ function previewValue(raw: string, type: string): string | number | boolean | nu
 type PreviewRow = DatasetPreview['rows'][number];
 
 /** Every row of a mock file: the column samples in turn, numbers varied a little so sorting shows something. */
-function mockRows(detail: DatasetDetail): PreviewRow[] {
+export function mockRows(detail: DatasetDetail): PreviewRow[] {
   return Array.from({ length: detail.row_count ?? 0 }, (_, i) =>
     Object.fromEntries(
       detail.columns.map((c) => {
@@ -415,7 +418,7 @@ export function routeDatasets(method: string, url: URL, user: MockUser, body: un
     return ok({ items: items.slice(offset, offset + limit).map(summary), total: items.length, limit, offset });
   }
 
-  const match = /^\/datasets\/([^/]+)(\/preview|\/reparse|\/quality)?$/.exec(path);
+  const match = /^\/datasets\/([^/]+)(\/preview|\/reparse|\/quality|\/dashboard|\/dashboard\/data)?$/.exec(path);
   if (!match) return null;
   const id = decodeURIComponent(match[1] ?? '');
   const ds = datasetsOf(user).find((d) => d.detail.id === id);
@@ -481,6 +484,19 @@ export function routeDatasets(method: string, url: URL, user: MockUser, body: un
     if (d.status === 'expired') return fail(410, 'dataset_expired', 'The source file was removed.');
     if (d.status !== 'ready') return fail(409, 'dataset_not_ready', 'The dataset is not ready.');
     return ok(mockQuality(d, ds.template_key));
+  }
+
+  if (sub === '/dashboard' || sub === '/dashboard/data') {
+    return routeDashboard({
+      method,
+      sub,
+      detail: d,
+      templateKey: ds.template_key,
+      rows: d.status === 'ready' ? mockRows(d) : [],
+      state: ds.dashboard,
+      setState: (state) => (ds.dashboard = state),
+      body,
+    });
   }
 
   if (sub === '/reparse' && method === 'POST') {

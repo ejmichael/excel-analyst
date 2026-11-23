@@ -137,7 +137,7 @@ describe('Quality tab: issues', () => {
     fakeApi(() => ({
       body: quality({
         issues: [
-          issue({ title: 'Text column with examples' }),
+          issue({ title: 'Text column with examples', kind: 'mixed_types' }),
           issue({ title: 'Number column', column: 'amount', kind: 'extreme_values', examples: ['99999'] }),
           issue({ title: 'Whole rows', column: null, kind: 'duplicate_rows', examples: [] }),
           issue({ title: 'No examples', kind: 'missing_values', examples: [] }),
@@ -154,6 +154,27 @@ describe('Quality tab: issues', () => {
     await userEvent.click(links[0]!);
     expect(router.state.location.pathname).toBe('/datasets/d1/data');
     expect(router.state.location.search).toBe('?q=cafe%20rose');
+  });
+
+  it('no "See the rows" for case and whitespace issues (the search cannot isolate those rows); still there for others', async () => {
+    fakeApi(() => ({
+      body: quality({
+        issues: [
+          issue({ id: 'inconsistent_case:store', title: 'Case', kind: 'inconsistent_case' }),
+          issue({ id: 'stray_whitespace:store', title: 'Spaces', kind: 'stray_whitespace' }),
+          issue({ id: 'mixed_url_scheme:store', title: 'Links', kind: 'mixed_url_scheme' }),
+          issue({ id: 'mixed_types:store', title: 'Types', kind: 'mixed_types' }),
+        ],
+      }),
+    }));
+    renderAt(<QualityTab dataset={ds} />, '/datasets/d1/quality');
+    await screen.findByText('4 issues found.');
+    const links = screen.getAllByRole('link', { name: /See the rows/ }).map((l) => l.getAttribute('aria-label') ?? l.textContent);
+    expect(links).toHaveLength(2);
+    expect(screen.getByRole('link', { name: 'See the rows: Links' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'See the rows: Types' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'See the rows: Case' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'See the rows: Spaces' })).not.toBeInTheDocument();
   });
 
   it('no issues: a friendly empty state', async () => {

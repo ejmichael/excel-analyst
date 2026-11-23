@@ -86,7 +86,8 @@ function WidgetBody({ widget, result, filtered }: WidgetProps) {
     const column = widget.chart.y[0] ?? result.columns[0]?.name ?? '';
     const value = result.rows[0]?.[column] ?? null;
     return (
-      <p className="font-heading text-3xl font-semibold tabular break-words" data-kpi-value>
+      // Smaller on a phone, where two tiles share a row, so a rand amount stays on one line.
+      <p className="font-heading text-xl font-semibold tabular break-words sm:text-2xl lg:text-3xl" data-kpi-value>
         {formatValue(value, formatOf(source, column)) || NO_VALUE}
       </p>
     );
