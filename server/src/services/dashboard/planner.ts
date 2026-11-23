@@ -42,13 +42,23 @@ export interface PlanDeps {
   sandbox?: typeof withSandbox;
 }
 
+/** One planned widget and what happened to it (model text: kept out of logs; used by tests and the real-model report). */
+export interface WidgetTrace {
+  title: string;
+  type: string;
+  width: string;
+  sql: string;
+  outcome: 'kept' | 'repaired' | string;
+  error?: string;
+}
+
 export interface PlanOutcome {
   status: 'ready' | 'failed';
   fallback: boolean;
   error_message: string | null;
   plan: DashboardPlan;
   /** Fixed categories only, for logs and the real-model report. */
-  report: { planned: number; kept: number; repaired: number; dropped: Record<string, number>; modelFailed: boolean };
+  report: { planned: number; kept: number; repaired: number; dropped: Record<string, number>; modelFailed: boolean; trace: WidgetTrace[] };
 }
 
 // ---------- filters ----------
@@ -135,7 +145,7 @@ const toWidget = (w: PlannedWidget, position: number): DashboardWidget => ({ id:
 export async function planDashboard(input: PlanInput, deps: PlanDeps): Promise<PlanOutcome> {
   const sandbox = deps.sandbox ?? withSandbox;
   const pii = new Set(input.columns.filter((c) => c.is_pii).map((c) => c.sql_name.toLowerCase()));
-  const report: PlanOutcome['report'] = { planned: 0, kept: 0, repaired: 0, dropped: {}, modelFailed: false };
+  const report: PlanOutcome['report'] = { planned: 0, kept: 0, repaired: 0, dropped: {}, modelFailed: false, trace: [] };
   const drop = (reason: string) => {
     report.dropped[reason] = (report.dropped[reason] ?? 0) + 1;
   };
@@ -173,17 +183,25 @@ export async function planDashboard(input: PlanInput, deps: PlanDeps): Promise<P
       report.planned = plan.widgets.length;
       reading = plan.reading.trim();
       // Each widget on its own: a malformed one is dropped, the others are checked.
-      const slots: Array<{ w: PlannedWidget; ok: boolean; sqlError?: string }> = [];
+      const slots: Array<{ w: PlannedWidget; ok: boolean; sqlError?: string; trace: WidgetTrace }> = [];
       for (const raw of plan.widgets) {
         const parsed = dashboardWidgetSchema.safeParse(raw);
         if (!parsed.success) {
           drop('malformed');
+          report.trace.push({ title: String((raw as { title?: unknown })?.title ?? ''), type: '?', width: '?', sql: '', outcome: 'malformed' });
           continue;
         }
+        const trace: WidgetTrace = { title: parsed.data.title, type: parsed.data.chart.type, width: parsed.data.width, sql: parsed.data.sql, outcome: 'kept' };
+        report.trace.push(trace);
         const check = await checkWidget(session, parsed.data, pii);
-        if (check.ok) slots.push({ w: parsed.data, ok: true });
-        else if (check.kind === 'sql') slots.push({ w: parsed.data, ok: false, sqlError: check.error });
-        else drop(check.reason);
+        if (check.ok) slots.push({ w: parsed.data, ok: true, trace });
+        else if (check.kind === 'sql') {
+          trace.error = check.error;
+          slots.push({ w: parsed.data, ok: false, sqlError: check.error, trace });
+        } else {
+          trace.outcome = check.reason;
+          drop(check.reason);
+        }
       }
 
       // One shared repair call for the widgets whose SQL did not parse or run.
@@ -200,12 +218,14 @@ export async function planDashboard(input: PlanInput, deps: PlanDeps): Promise<P
           if (candidate?.success) {
             const check = await checkWidget(session, candidate.data, pii);
             if (check.ok) {
-              slots[i] = { w: candidate.data, ok: true };
+              s.trace.outcome = 'repaired';
+              slots[i] = { w: candidate.data, ok: true, trace: s.trace };
               report.repaired++;
               continue;
             }
           }
           drop('sql_failed');
+          s.trace.outcome = 'sql_failed';
           s.ok = false;
         }
       }

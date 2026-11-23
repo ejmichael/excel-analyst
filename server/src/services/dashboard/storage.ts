@@ -49,8 +49,9 @@ export function toDashboard(r: DashboardRow): Dashboard {
   };
 }
 
-export const isStale = (r: Pick<DashboardRow, 'status' | 'updated_at'>, now = Date.now()) =>
-  r.status === 'planning' && now - Date.parse(r.updated_at) > STALE_PLANNING_MS;
+/** Measured from created_at, which every (re)start of planning sets and nothing else touches while it runs. */
+export const isStale = (r: Pick<DashboardRow, 'status' | 'created_at'>, now = Date.now()) =>
+  r.status === 'planning' && now - Date.parse(r.created_at) > STALE_PLANNING_MS;
 
 /**
  * The caller's dashboard for a dataset, or null. A stale planning run is marked failed first (only if it is still

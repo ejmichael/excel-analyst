@@ -63,7 +63,8 @@ async function run(row: DashboardRow, input: DashboardJobInput): Promise<void> {
       logger.warn({ dashboard_id: row.id, ms: Date.now() - started }, 'dashboard planning timed out');
       return;
     }
-    const { report, ...saved } = outcome;
+    // The trace holds model text (titles, SQL): never logged.
+    const { report: { trace: _trace, ...report }, ...saved } = outcome;
     await finishPlanning(row, saved);
     logger.info(
       { dashboard_id: row.id, dataset_id: row.dataset_id, status: saved.status, fallback: saved.fallback, widgets: saved.plan.widgets.length, ...report, ms: Date.now() - started },
