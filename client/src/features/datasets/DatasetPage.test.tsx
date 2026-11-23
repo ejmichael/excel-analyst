@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -9,16 +9,18 @@ import { mockTransport, setMockLatency } from '@/api/mocks/handlers';
 import { mockStore } from '@/api/mocks/store';
 import { SessionProvider } from '@/auth/SessionProvider';
 import { routes } from '@/routes';
+import type { DatasetDetail } from '@/api/types';
 
 const LABEL = 'Check how we read your file';
 
-async function openDataset(name: string, path = '') {
+async function openDataset(name: string, path = '', edit?: (detail: DatasetDetail) => void) {
   setMockLatency(0);
   mockStore.reset();
   await mockAuthBackend.signIn('demo@example.co.za', 'password123');
   const user = mockStore.findUser('demo@example.co.za')!;
   user.popia_consent_at = '2026-11-01T09:00:00+02:00';
   const dataset = user.datasets!.find((d) => d.detail.name === name)!;
+  edit?.(dataset.detail);
   configureApiClient({ transport: mockTransport, refreshAccessToken: async () => null });
   const router = createMemoryRouter(routes, { initialEntries: [`/datasets/${dataset.detail.id}${path}`] });
   render(
@@ -44,6 +46,7 @@ describe('every way into the parse dialog says "Check how we read your file"', (
 
   it('a file with a warning (the warning text names the same button)', async () => {
     await openDataset('Office expenses');
+    await userEvent.click(await screen.findByRole('button', { name: '1 thing to check' }));
     expect(await screen.findByText(/choose month-first under "Check how we read your file"/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: LABEL })).toBeInTheDocument();
   });
@@ -154,10 +157,105 @@ describe('the file workspace: tabs and their URLs', () => {
     expect(screen.getByText(/The original file was deleted on/)).toBeInTheDocument();
   });
 
-  it('the header: name, status in words, and rows, columns and upload date', async () => {
+  it('the header: name, status in words, and every fact about the file on one line', async () => {
     await openDataset('Bank statement October');
     expect(await screen.findByRole('heading', { level: 1, name: 'Bank statement October' })).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
-    expect(screen.getByText('150 rows, 4 columns, uploaded 21 Oct 2026')).toBeInTheDocument();
+    const line = document.querySelector('[data-file-summary]')!;
+    expect(line.textContent).toMatch(/^150 rows, 4 columns, 03_bank_statement_comma_quoted\.csv, \S+\s?kB, uploaded 21 Oct 2026\./);
+    expect(line).toHaveTextContent('We left out 1 row that looked like a total or a blank line.');
+    expect(line.textContent).toMatch(/We delete the file on \d+ \w+ \d{4}\.$/);
   });
 });
+
+describe('the compact header', () => {
+  it('Rename and Delete live in a More menu: keyboard, Escape and focus return', async () => {
+    await openDataset('Bank statement October');
+    const more = await screen.findByRole('button', { name: 'More actions for this file' });
+    expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
+    more.focus();
+    await userEvent.keyboard('{Enter}');
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Rename', 'Delete']);
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(more).toHaveFocus();
+
+    await userEvent.click(more);
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    expect(screen.getByLabelText('File name in Analyst')).toHaveValue('Bank statement October');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for this file' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    expect(await screen.findByRole('dialog', { name: 'Delete “Bank statement October”?' })).toBeInTheDocument();
+  });
+
+  it('the reading line keeps its text in a title, with More to show it all', async () => {
+    await openDataset('Bank statement October');
+    const bar = (await screen.findByText('How we read this file:')).closest('section')!;
+    const line = bar.querySelector('p')!;
+    expect(line.getAttribute('title')).toMatch(/^How we read this file: Columns are separated by/);
+    expect(line.className).toMatch(/sm:truncate/);
+    await userEvent.click(within(bar).getByRole('button', { name: 'More of how we read this file' }));
+    expect(line.className).not.toMatch(/sm:truncate/);
+    expect(within(bar).getByRole('button', { name: 'Less of how we read this file' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('warnings: one line, collapsed by default, expands in place; the choice is remembered per file', async () => {
+    sessionStorage.clear();
+    const { id } = await openDataset('Office expenses');
+    const toggle = await screen.findByRole('button', { name: '1 thing to check' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: LABEL })).not.toBeInTheDocument();
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: LABEL })).toBeVisible();
+    expect(sessionStorage.getItem(`analyst:warnings-open:${id}`)).toBe('1');
+    sessionStorage.clear();
+  });
+
+  it('a remembered choice wins over the default', async () => {
+    await openDataset('Office expenses', '', (d) => sessionStorage.setItem(`analyst:warnings-open:${d.id}`, '1'));
+    expect(await screen.findByRole('button', { name: '1 thing to check' })).toHaveAttribute('aria-expanded', 'true');
+    sessionStorage.clear();
+  });
+
+  it('starts open with 5 or more warnings', async () => {
+    sessionStorage.clear();
+    await openDataset('Bank statement October', '', (d) => {
+      d.warnings = ['One', 'Two', 'Three', 'Four', 'Five'];
+    });
+    expect(await screen.findByRole('button', { name: '5 things to check' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('starts open when the file could not be read', async () => {
+    sessionStorage.clear();
+    await openDataset('Card sales full year', '', (d) => {
+      d.warnings = ['Row 3 has more cells than the header.'];
+    });
+    expect(await screen.findByRole('button', { name: '1 thing to check' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Row 3 has more cells than the header.')).toBeVisible();
+  });
+
+  it('works when sessionStorage throws', async () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    try {
+      await openDataset('Office expenses');
+      const toggle = await screen.findByRole('button', { name: '1 thing to check' });
+      await userEvent.click(toggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await userEvent.click(screen.getByRole('button', { name: LABEL }));
+      expect(await screen.findByRole('dialog', { name: LABEL })).toBeInTheDocument();
+    } finally {
+      get.mockRestore();
+      set.mockRestore();
+    }
+  });
+});
+

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useState } from 'react';
 import { Link, Navigate, useLocation, useParams } from 'react-router';
-import { ArrowLeft, Archive, CircleAlert, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Archive, CircleAlert } from 'lucide-react';
 import { errorMessage, isApiError } from '@/api/client';
 import type { DatasetDetail } from '@/api/types';
 import { useMe } from '@/auth/useMe';
@@ -18,6 +18,7 @@ import { QualityTab } from './workspace/QualityTab';
 import { ReadingBar } from './workspace/ReadingBar';
 import { ReportsTab } from './workspace/ReportsTab';
 import { TabBar, panelId, tabId } from './workspace/TabBar';
+import { WarningsNotice } from './workspace/WarningsNotice';
 import { defaultTabFor, tabPath, tabsFor, type WorkspaceTab } from './workspace/tabs';
 
 // Loaded on demand: answers and the dashboard draw charts (Recharts), which are most of the bundle.
@@ -42,7 +43,7 @@ export function DatasetPage() {
   const query = useDatasetPolling(id);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-4">
       <BackLink />
       {query.isPending ? (
         <InlineLoading label="Loading the file" />
@@ -85,7 +86,9 @@ function DatasetView({ dataset, slow, tab }: { dataset: DatasetDetail; slow: boo
     <>
       <DatasetHeader dataset={dataset} />
       {dataset.status === 'ready' && <ReadingBar dataset={dataset} onChange={openParse} />}
-      {dataset.status === 'ready' && dataset.warnings.length > 0 && <Warnings dataset={dataset} onCheckReading={openParse} />}
+      {(dataset.status === 'ready' || dataset.status === 'failed') && dataset.warnings.length > 0 && (
+        <WarningsNotice dataset={dataset} onCheckReading={openParse} />
+      )}
       {(dataset.status === 'profiling' || dataset.status === 'uploading') && <ProfilingState slow={slow} />}
       {dataset.status === 'failed' && <FailedPanel dataset={dataset} onCheckReading={openParse} />}
       {dataset.status === 'expired' && (
@@ -101,7 +104,7 @@ function DatasetView({ dataset, slow, tab }: { dataset: DatasetDetail; slow: boo
       )}
 
       {active && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           <TabBar datasetId={dataset.id} tabs={tabs} active={active} badges={{ quality: <QualityBadge dataset={dataset} /> }} />
           <div role="tabpanel" id={panelId(active)} aria-labelledby={tabId(active)} tabIndex={-1} className="outline-none">
             <TabPanel tab={active} dataset={dataset} />
@@ -151,29 +154,6 @@ function QualityBadge({ dataset }: { dataset: DatasetDetail }) {
       {formatNumber(quality.data.score, 0)}
       <span className="sr-only">, score out of 100</span>
     </span>
-  );
-}
-
-function Warnings({ dataset, onCheckReading }: { dataset: DatasetDetail; onCheckReading: () => void }) {
-  return (
-    <section aria-labelledby="warnings-heading" className="rounded-2xl border border-warning/40 bg-warning-bg p-5">
-      <div className="flex items-start gap-3">
-        <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
-        <div className="space-y-3">
-          <h2 id="warnings-heading" className="text-lg font-semibold">
-            Please check: {dataset.warnings.length === 1 ? 'one thing' : `${formatNumber(dataset.warnings.length, 0)} things`} we were not sure about
-          </h2>
-          <ul className="list-disc space-y-1 pl-5">
-            {dataset.warnings.map((w) => (
-              <li key={w}>{w}</li>
-            ))}
-          </ul>
-          <Button variant="outline" className="bg-card" onClick={onCheckReading}>
-            Check how we read your file
-          </Button>
-        </div>
-      </div>
-    </section>
   );
 }
 

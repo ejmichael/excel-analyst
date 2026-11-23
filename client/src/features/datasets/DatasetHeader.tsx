@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, Pencil, Trash2 } from 'lucide-react';
 import { errorMessage, isApiError } from '@/api/client';
 import type { DatasetDetail } from '@/api/types';
 import { FormMessage, TextField } from '@/components/FormField';
@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { formatBytes, formatNumber, formatShortDate } from '@/lib/format';
 import { expirySentence, rowCountLabel } from './DatasetList';
 import { useDeleteDataset, useUpdateDataset } from './queries';
@@ -21,6 +22,26 @@ import { StatusBadge } from './StatusBadge';
 export function excludedRowsNote(excluded: number): string | null {
   if (excluded <= 0) return null;
   return `We left out ${formatNumber(excluded, 0)} ${excluded === 1 ? 'row that looked' : 'rows that looked'} like a total or a blank line.`;
+}
+
+/**
+ * Every fact about the file on one line: "115 rows, 10 columns, Booking app.xlsx, 44,4 kB, uploaded 23 Nov 2026."
+ * then the left-out rows and the deletion date as sentences. Counts as the server gives them.
+ */
+export function headerSummary(dataset: DatasetDetail): string {
+  const columns = dataset.columns.length;
+  const facts = [
+    dataset.row_count !== null && dataset.status !== 'failed' ? rowCountLabel(dataset.row_count) : null,
+    columns > 0 ? `${formatNumber(columns, 0)} ${columns === 1 ? 'column' : 'columns'}` : null,
+    dataset.original_filename,
+    formatBytes(dataset.size_bytes),
+    `uploaded ${formatShortDate(dataset.created_at)}`,
+  ].filter(Boolean);
+  const excluded = dataset.status === 'ready' ? excludedRowsNote(dataset.excluded_rows) : null;
+  // An expired file has its own panel saying when it was deleted.
+  const expiry = dataset.status === 'expired' ? null : expirySentence(dataset);
+  const first = facts.join(', ').replace(/^./, (c) => c.toUpperCase());
+  return [`${first}.`, excluded, expiry].filter(Boolean).join(' ');
 }
 
 export function DatasetHeader({ dataset }: { dataset: DatasetDetail }) {
@@ -46,20 +67,10 @@ export function DatasetHeader({ dataset }: { dataset: DatasetDetail }) {
     );
   };
 
-  // "25 rows, 8 columns, uploaded 19 Nov 2026" (counts as the server gives them), then the file itself.
-  const columns = dataset.columns.length;
-  const summary = [
-    dataset.row_count !== null && dataset.status !== 'failed' ? rowCountLabel(dataset.row_count) : null,
-    columns > 0 ? `${formatNumber(columns, 0)} ${columns === 1 ? 'column' : 'columns'}` : null,
-    `uploaded ${formatShortDate(dataset.created_at)}`,
-  ].filter(Boolean);
-  const meta = [dataset.original_filename, formatBytes(dataset.size_bytes)];
-  const excluded = dataset.status === 'ready' ? excludedRowsNote(dataset.excluded_rows) : null;
-  // An expired file has its own panel saying when it was deleted.
-  const expiry = dataset.status === 'expired' ? null : expirySentence(dataset);
+  const summary = headerSummary(dataset);
 
   return (
-    <header className="space-y-3">
+    <header className="space-y-1.5">
       {editing ? (
         <form
           className="flex flex-col gap-2 sm:flex-row sm:items-start"
@@ -95,37 +106,41 @@ export function DatasetHeader({ dataset }: { dataset: DatasetDetail }) {
           </div>
         </form>
       ) : (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className="min-w-0 text-2xl font-semibold break-words sm:text-3xl">{dataset.name}</h1>
-          <StatusBadge status={dataset.status} />
+        <div className="flex items-start gap-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="min-w-0 text-2xl font-semibold break-words sm:text-3xl">{dataset.name}</h1>
+            <StatusBadge status={dataset.status} />
+          </div>
+          {/* Not modal: the Delete dialog opens straight after the menu closes. */}
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="shrink-0 bg-card" aria-label="More actions for this file">
+                More
+                <ChevronDown aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem
+                onSelect={() => {
+                  setName(dataset.name);
+                  setEditing(true);
+                }}
+              >
+                <Pencil aria-hidden />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
+                <Trash2 aria-hidden />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
 
-      <div className="space-y-1 text-sm text-muted-foreground">
-        <p className="tabular">{summary.join(', ').replace(/^./, (c) => c.toUpperCase())}</p>
-        <p className="tabular break-all">{meta.join(' · ')}</p>
-        {excluded && <p>{excluded}</p>}
-        {expiry && <p>{expiry}</p>}
-      </div>
-
-      {!editing && (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setName(dataset.name);
-              setEditing(true);
-            }}
-          >
-            <Pencil aria-hidden />
-            Rename
-          </Button>
-          <Button variant="outline" className="text-destructive" onClick={() => setConfirmDelete(true)}>
-            <Trash2 aria-hidden />
-            Delete
-          </Button>
-        </div>
-      )}
+      <p className="text-sm text-muted-foreground tabular break-words" data-file-summary>
+        {summary}
+      </p>
 
       <Dialog open={confirmDelete} onOpenChange={(open) => !open && setConfirmDelete(false)}>
         <DialogContent>

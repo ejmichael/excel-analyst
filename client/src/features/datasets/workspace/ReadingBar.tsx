@@ -1,26 +1,41 @@
+import { useId, useState } from 'react';
 import { FileCog } from 'lucide-react';
 import type { DatasetDetail } from '@/api/types';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { describeParseOptions } from '../labels';
 
-/** "How we read this file": the sheet or separator, header row, decimals and dates in words, and Change. */
+/**
+ * "How we read this file": the sheet or separator, header row, decimals and dates in words, and Change. One line on
+ * desktop (the full text in a title, and More shows it all); wraps on a phone.
+ */
 export function ReadingBar({ dataset, onChange }: { dataset: DatasetDetail; onChange: () => void }) {
   const lines = describeParseOptions(dataset.parse_options, dataset.file_type);
+  const text = lines.length ? lines.join(' ') : 'We detected the layout ourselves.';
+  const [full, setFull] = useState(false);
+  const textId = useId();
   return (
-    <section
-      aria-labelledby="reading-heading"
-      className="flex flex-col gap-2 rounded-2xl border bg-card px-4 py-3 sm:flex-row sm:items-center sm:gap-4"
-    >
-      <div className="flex min-w-0 flex-1 items-start gap-3">
-        <FileCog className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
-        <p className="min-w-0 text-sm">
-          <span id="reading-heading" className="font-medium">
-            How we read this file:
-          </span>{' '}
-          <span className="text-muted-foreground">{lines.length ? lines.join(' ') : 'We detected the layout ourselves.'}</span>
-        </p>
-      </div>
-      <Button variant="outline" className="self-start sm:self-auto" aria-label="Change how we read this file" onClick={onChange}>
+    <section aria-labelledby="reading-heading" className="flex items-center gap-2 rounded-2xl border bg-card py-1 pr-1 pl-4 sm:gap-3">
+      <FileCog className="size-5 shrink-0 text-primary" aria-hidden />
+      <p id={textId} className={cn('min-w-0 flex-1 py-2 text-sm', !full && 'sm:truncate')} title={`How we read this file: ${text}`}>
+        <span id="reading-heading" className="font-medium">
+          How we read this file:
+        </span>{' '}
+        <span className="text-muted-foreground">{text}</span>
+      </p>
+      {/* Only needed where the line is clamped (desktop). */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="hidden min-h-11 shrink-0 text-primary sm:inline-flex"
+        aria-expanded={full}
+        aria-controls={textId}
+        aria-label={full ? 'Less of how we read this file' : 'More of how we read this file'}
+        onClick={() => setFull((v) => !v)}
+      >
+        {full ? 'Less' : 'More'}
+      </Button>
+      <Button variant="outline" className="shrink-0" aria-label="Change how we read this file" onClick={onChange}>
         Change
       </Button>
     </section>
