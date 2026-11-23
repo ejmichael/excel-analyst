@@ -135,6 +135,18 @@ describe('personal-data columns only inside COUNT', () => {
     ['SELECT count(*) AS n FROM data WHERE "email" LIKE \'%gmail%\'', true],
     ['SELECT "email", count(*) AS n FROM data GROUP BY 1', true],
     ['WITH x AS (SELECT "email" AS e FROM data) SELECT count(e) AS n FROM x', true],
+    // W2b: null checks on the column itself are allowed.
+    ['SELECT count(*) AS n FROM data WHERE "email" IS NOT NULL', false],
+    ['SELECT count(*) AS n FROM data WHERE "email" IS NULL', false],
+    ['SELECT count(*) FILTER (WHERE "email" IS NOT NULL) AS n FROM data', false],
+    ['SELECT count(*) FILTER (WHERE "email" IS NULL) AS n FROM data', false],
+    ['SELECT avg(CASE WHEN "email" IS NOT NULL THEN 1.0 ELSE 0 END) AS share FROM data', false],
+    // Everything else stays forbidden.
+    ['SELECT count(*) AS n FROM data WHERE "email" = \'a@b.co\'', true],
+    ['SELECT count(*) AS n FROM data WHERE lower("email") IS NOT NULL', true],
+    ['SELECT "email" IS NOT NULL AS has, "email" FROM data', true],
+    ['SELECT count(*) FILTER (WHERE "email" LIKE \'%@gmail.com\') AS n FROM data', true],
+    ['SELECT length("email") AS n FROM data', true],
   ])('%s -> %s', async (sql, expected) => {
     expect(usesPiiOutsideCount(await tree(sql), pii)).toBe(expected);
   });

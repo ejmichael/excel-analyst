@@ -56,7 +56,7 @@ export function buildDashboardUser(input: { datasetName: string; rowCount: numbe
 
 type Node = Record<string, unknown>;
 
-/** True when the parse tree uses a PII column (or *) anywhere outside count(...). */
+/** True when the parse tree uses a PII column (or *) anywhere outside count(...) or a plain IS [NOT] NULL test of it. */
 export function usesPiiOutsideCount(tree: unknown, pii: Set<string>): boolean {
   if (pii.size === 0) return false;
   const walk = (v: unknown): boolean => {
@@ -64,6 +64,17 @@ export function usesPiiOutsideCount(tree: unknown, pii: Set<string>): boolean {
     if (v === null || typeof v !== 'object') return false;
     const n = v as Node;
     if (n.class === 'FUNCTION' && String(n.function_name ?? '').toLowerCase() === 'count') return false;
+    // W2b: a null check on the column itself only says whether a value is there (for example
+    // count(*) FILTER (WHERE "email" IS NOT NULL)); any other use still counts.
+    if (
+      n.class === 'OPERATOR' &&
+      (n.type === 'OPERATOR_IS_NULL' || n.type === 'OPERATOR_IS_NOT_NULL') &&
+      Array.isArray(n.children) &&
+      n.children.length === 1 &&
+      (n.children[0] as Node)?.class === 'COLUMN_REF'
+    ) {
+      return false;
+    }
     if (n.class === 'COLUMN_REF' && Array.isArray(n.column_names)) {
       if (pii.has(String(n.column_names.at(-1)).toLowerCase())) return true;
     }
