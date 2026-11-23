@@ -207,6 +207,16 @@ describe('planning the dashboard', () => {
   it('POST takes no body', async () => {
     expect((await request(app).post(api(`/datasets/${dsA2}/dashboard`)).set(bearer(a)).send({ widgets: [] })).status).toBe(422);
   });
+
+  it('a reparse deletes the dashboard (W2b), so the client plans a fresh one', async () => {
+    await planned(a, dsA2);
+    expect((await getDash(a, dsA2)).status).toBe(200);
+    await request(app).post(api(`/datasets/${dsA2}/reparse`)).set(bearer(a)).send({}).expect(202);
+    expect((await getDash(a, dsA2)).status).toBe(404);
+    const { count } = await supabaseAdmin().from('dashboards').select('id', { count: 'exact', head: true }).eq('dataset_id', dsA2);
+    expect(count).toBe(0);
+    await profilingIdle();
+  });
 });
 
 describe('POST /datasets/:id/dashboard/data', () => {
