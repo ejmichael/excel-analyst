@@ -372,6 +372,14 @@ export interface WidgetResult {
   error: string | null; // set when this widget could not run; the others still return
 }
 
+/** POST /datasets/:id/dashboard/save-to-report. Returns Report (201 new, 200 appended). */
+export interface SaveDashboardToReportRequest {
+  filters: DashboardFilterValue[]; // same rules as POST .../dashboard/data
+  widget_ids: ID[]; // 1 to 30 distinct, in report order
+  report_id?: ID; // append to this report; omit to create a new report
+  title?: string; // new report only, trimmed 1 to 120; default "{dataset name}, dashboard"
+}
+
 export interface DashboardData {
   rows_total: number;
   rows_in_scope: number; // rows left after the filters
@@ -410,7 +418,7 @@ export interface BlockCheck {
 }
 
 export type BlockStatus = 'ok' | 'flagged';
-export type BlockSource = 'user' | 'suggested' | 'template';
+export type BlockSource = 'user' | 'suggested' | 'template' | 'dashboard';
 
 export interface Block {
   id: ID;
@@ -428,7 +436,8 @@ export interface Block {
   checks: BlockCheck[];
   status: BlockStatus; // 'flagged' if any check failed
   source: BlockSource;
-  has_source_rows: boolean; // true if source_filter_sql exists and the dataset still exists
+  has_source_rows: boolean; // true if source_filter_sql exists (or source is 'dashboard') and the dataset still exists
+  filters: DashboardFilterValue[] | null; // source 'dashboard': the dashboard filters in force when it was saved ([] = none); null otherwise
   created_at: ISODateTime;
 }
 

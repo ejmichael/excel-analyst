@@ -125,3 +125,8 @@ Entry format:
   2. **Small additive type change:** as in option 1, plus an optional `reason?: 'export_too_large'` on `ValidationFailedDetails` (absent everywhere else), so the client can key on `details.reason` without knowing the endpoint.
 - Affects: `GET /reports/:id/export.xlsx` (API_CONTRACT Reports row and the "Exports" rule), `api-types.ts` only for option 2, client Download Excel error handling (switch from matching the message text), server route and integration test.
 - Status: APPLIED (approved by the user 2026-11-16, option 2; applied by the server chat 2026-11-17: 422 `validation_failed`, same message, not counted, `details: { fields: [{ location: "params", path: "id", message }], reason: "export_too_large" }`; `ValidationFailedDetails.reason` added to api-types.ts)
+
+## 2026-11-24: Save the dashboard to a report (from: user brief W3, written by the server chat)
+- What: `POST /datasets/:id/dashboard/save-to-report` (`SaveDashboardToReportRequest`, returns `Report`); `BlockSource` gains `'dashboard'`; `Block` gains `filters: DashboardFilterValue[] | null`.
+- Why: turns the dashboard's widgets, as they look under the current filters, into report answers, so the existing report page, Excel, print and share apply. `Block` had an origin field (`source`), so the value `dashboard` was added there. It had no way to record filters, so the structured form was chosen over SQL text: the client can show it, and source rows rebuild the same bound-parameter predicate the dashboard uses.
+- Status: APPLIED (permitted by the W3 brief). Choices: `question` is the widget title; reports have no draft state, so any report of the caller's can be appended to under the PATCH workspace rule.
