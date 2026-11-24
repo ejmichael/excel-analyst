@@ -140,7 +140,7 @@ export function AnswerCard({
       )}
 
       <div data-answer-figure>
-        <BlockChart block={block} look={chartLook} />
+        <BlockChart block={block} look={chartLook} fresh={!inReport} />
       </div>
 
       {!inReport && onFollowUp && block.follow_ups.length > 0 && (

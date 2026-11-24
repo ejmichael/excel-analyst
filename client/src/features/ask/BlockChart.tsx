@@ -13,9 +13,11 @@ import {
   Pie,
   PieChart,
   ResponsiveContainer,
+  Sector,
   Tooltip,
   XAxis,
   YAxis,
+  type PieSectorDataItem,
 } from 'recharts';
 import { BarChart3, Table2 } from 'lucide-react';
 import type { Block, ValueFormat } from '@/api/types';
@@ -32,7 +34,7 @@ import {
   wrapLabel,
   type ChartModel,
 } from './chartData';
-import { SERIES_COLOURS, colourAt, dashAt, fillAt, hatchId, isHatched, swatchAt } from './chartPalette';
+import { SERIES_COLOURS, colourAt, dashAt, fillAt, hatchId, isHatched, swatchAt, type ChartPalette } from './chartPalette';
 import { ResultTable } from './ResultTable';
 
 const TYPE_NAMES: Record<ChartModel['kind'] | 'bar' | 'line' | 'area', string> = {
@@ -152,20 +154,52 @@ export function printChartHeight(horizontal: boolean, categories: number): numbe
 const svgId = (id: string) => `c${id.replace(/[^a-zA-Z0-9]/g, '')}`;
 
 /** Hatch patterns for series past the tenth: a palette colour with white diagonal stripes at a different angle each. */
-function HatchDefs({ chartId, count }: { chartId: string; count: number }) {
+function HatchDefs({ chartId, count, palette = 'report' }: { chartId: string; count: number; palette?: ChartPalette }) {
   const hatched = Array.from({ length: count }, (_, i) => i).filter(isHatched);
   if (hatched.length === 0) return null;
   return (
     <defs>
       {hatched.map((i) => (
         <pattern key={i} id={hatchId(chartId, i)} patternUnits="userSpaceOnUse" width={6} height={6} patternTransform={`rotate(${45 + (i - SERIES_COLOURS) * 35})`}>
-          <rect width={6} height={6} fill={colourAt(i)} />
+          <rect width={6} height={6} fill={colourAt(i, palette)} />
           <line x1={0} y1={0} x2={0} y2={6} stroke="#ffffff" strokeWidth={2} />
         </pattern>
       ))}
     </defs>
   );
 }
+
+/** App charts (W2c): the rounding of a bar's outer end, in px. */
+export const BAR_RADIUS = 5;
+
+/**
+ * The corners an app chart's bar rounds ([top-left, top-right, bottom-right, bottom-left]): the outer end only, the top
+ * of a vertical bar or the right of a horizontal one; in a stack only the outermost segment.
+ */
+export function barRadius(horizontal: boolean, outermost: boolean): [number, number, number, number] | 0 {
+  if (!outermost) return 0;
+  return horizontal ? [0, BAR_RADIUS, BAR_RADIUS, 0] : [BAR_RADIUS, BAR_RADIUS, 0, 0];
+}
+
+/** The id of the soft fill under series `i` of a line or area chart (unique per chart, like the hatch ids). */
+export const gradientId = (chartId: string, i: number) => `${chartId}-fill-${i}`;
+
+/** App line and area charts: the series colour at 28% opacity under the line, fading to nothing at the axis. */
+function GradientDefs({ chartId, count }: { chartId: string; count: number }) {
+  return (
+    <defs>
+      {Array.from({ length: count }, (_, i) => (
+        <linearGradient key={i} id={gradientId(chartId, i)} x1={0} y1={0} x2={0} y2={1}>
+          <stop offset="0%" stopColor={colourAt(i, 'fresh')} stopOpacity={0.28} />
+          <stop offset="100%" stopColor={colourAt(i, 'fresh')} stopOpacity={0} />
+        </linearGradient>
+      ))}
+    </defs>
+  );
+}
+
+/** A hovered or focused slice of an app donut stands out a little. */
+const activeSlice = (props: PieSectorDataItem) => <Sector {...props} outerRadius={(props.outerRadius ?? 0) + 4} />;
 
 /** On a report document, the category labels of horizontal bars get about this share of the chart's width. */
 export const DOCUMENT_LABEL_SHARE = 0.36;
@@ -193,16 +227,19 @@ export const TOOLTIP_PLACEMENT = {
 /**
  * Takes the parts of an answer it draws, so a dashboard widget's result can use it too. `readable` (dashboard widgets
  * only): bar charts with long or many category labels are drawn on their side with the labels in full, and a donut's
- * legend has one entry per line.
+ * legend has one entry per line. `fresh` (Dashboard widgets and Ask answer cards): the app palette, rounded bars, soft
+ * fills under lines, no axis lines. Reports leave it off and keep their colours and look.
  */
 export function BlockChart({
   block,
   look = 'app',
   readable = false,
+  fresh = false,
 }: {
   block: Pick<Block, 'title' | 'chart' | 'columns' | 'rows'>;
   look?: ChartLook;
   readable?: boolean;
+  fresh?: boolean;
 }) {
   const model = useMemo(() => buildChartModel(block), [block]);
   const keys = useMemo(() => groupKeyColumns(block), [block]);
@@ -242,7 +279,7 @@ export function BlockChart({
           </Button>
         </div>
       )}
-      <div id={tableId}>{asTable || model.kind === 'table' ? table : <ChartView model={model} ariaLabel={ariaLabel} look={look} readable={readable} />}</div>
+      <div id={tableId}>{asTable || model.kind === 'table' ? table : <ChartView model={model} ariaLabel={ariaLabel} look={look} readable={readable} fresh={fresh} />}</div>
     </div>
   );
 }
@@ -252,11 +289,13 @@ function ChartView({
   ariaLabel,
   look,
   readable,
+  fresh,
 }: {
   model: Exclude<ChartModel, { kind: 'empty' } | { kind: 'table' }>;
   ariaLabel: string;
   look: ChartLook;
   readable: boolean;
+  fresh: boolean;
 }) {
   if (model.kind === 'kpi') {
     return (
@@ -271,19 +310,31 @@ function ChartView({
     );
   }
 
-  if (model.kind === 'pie') return <PieView model={model} ariaLabel={ariaLabel} readable={readable} />;
-  return <CartesianView model={model} ariaLabel={ariaLabel} look={look} readable={readable} />;
+  if (model.kind === 'pie') return <PieView model={model} ariaLabel={ariaLabel} readable={readable} fresh={fresh} />;
+  return <CartesianView model={model} ariaLabel={ariaLabel} look={look} readable={readable} fresh={fresh} />;
 }
 
-function PieView({ model, ariaLabel, readable }: { model: Extract<ChartModel, { kind: 'pie' }>; ariaLabel: string; readable: boolean }) {
+function PieView({
+  model,
+  ariaLabel,
+  readable,
+  fresh,
+}: {
+  model: Extract<ChartModel, { kind: 'pie' }>;
+  ariaLabel: string;
+  readable: boolean;
+  fresh: boolean;
+}) {
   const chartId = svgId(useId());
+  const palette: ChartPalette = fresh ? 'fresh' : 'report';
   return (
     <div className="space-y-3">
-      <div role="img" aria-label={ariaLabel} className="h-64 w-full">
+      <div role="img" aria-label={ariaLabel} className="h-64 w-full" data-chart-style={palette}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <HatchDefs chartId={chartId} count={model.slices.length} />
+            <HatchDefs chartId={chartId} count={model.slices.length} palette={palette} />
             <Pie
+              activeShape={fresh ? activeSlice : undefined}
               data={model.slices}
               dataKey="value"
               nameKey="label"
@@ -294,7 +345,7 @@ function PieView({ model, ariaLabel, readable }: { model: Extract<ChartModel, { 
               isAnimationActive={false}
             >
               {model.slices.map((s, i) => (
-                <Cell key={s.name} fill={fillAt(chartId, i)} />
+                <Cell key={s.name} fill={fillAt(chartId, i, palette)} />
               ))}
             </Pie>
             <Tooltip {...TOOLTIP_PLACEMENT} formatter={(v) => formatValue(v as number, model.format)} />
@@ -307,7 +358,7 @@ function PieView({ model, ariaLabel, readable }: { model: Extract<ChartModel, { 
         <ul className="space-y-1.5 text-sm" aria-label="Legend" data-pie-legend>
           {model.slices.map((s, i) => (
             <li key={s.name} className="flex items-start gap-2">
-              <span className="mt-1 size-3 shrink-0 rounded-sm" style={{ background: swatchAt(i) }} aria-hidden />
+              <span className="mt-1 size-3 shrink-0 rounded-sm" style={{ background: swatchAt(i, palette) }} aria-hidden />
               <span className="min-w-0 flex-1 break-words">{s.label}</span>
               <span className="tabular font-medium whitespace-nowrap">{formatValue(s.value, model.format)}</span>
             </li>
@@ -317,7 +368,7 @@ function PieView({ model, ariaLabel, readable }: { model: Extract<ChartModel, { 
         <ul className="grid gap-1.5 text-sm sm:grid-cols-2">
           {model.slices.map((s, i) => (
             <li key={s.name} className="flex items-center gap-2">
-              <span className="size-3 shrink-0 rounded-sm" style={{ background: swatchAt(i) }} aria-hidden />
+              <span className="size-3 shrink-0 rounded-sm" style={{ background: swatchAt(i, palette) }} aria-hidden />
               <span className="min-w-0 flex-1 truncate" title={s.label}>
                 {s.label}
               </span>
@@ -335,11 +386,13 @@ function CartesianView({
   ariaLabel,
   look,
   readable,
+  fresh,
 }: {
   model: Extract<ChartModel, { kind: 'cartesian' }>;
   ariaLabel: string;
   look: ChartLook;
   readable: boolean;
+  fresh: boolean;
 }) {
   // The drawn width, for the document look's label column (layout only, never a figure).
   const [measuredWidth, setChartWidth] = useState(0);
@@ -376,11 +429,17 @@ function CartesianView({
     ) : null;
   const grid = <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={horizontal} horizontal={!horizontal} />;
   const stackId = model.stacked ? 'stack' : undefined;
+  const palette: ChartPalette = fresh ? 'fresh' : 'report';
+  // App charts: no axis lines, only the dashed grid.
+  const axisStyle = fresh ? { axisLine: false, tickLine: false } : {};
+  // App line charts are drawn as areas so the line has a soft fill under it; the line, points and values are the same.
+  const filled = model.type === 'area' || (fresh && model.type === 'line');
 
   const xAxis = horizontal ? (
-    <XAxis type="number" tickFormatter={valueTick} tick={AXIS_TICK} allowDecimals={axis.allowDecimals} tickCount={axis.tickCount} />
+    <XAxis type="number" tickFormatter={valueTick} tick={AXIS_TICK} allowDecimals={axis.allowDecimals} tickCount={axis.tickCount} {...axisStyle} />
   ) : (
     <XAxis
+      {...axisStyle}
       dataKey="xLabel"
       tick={<CategoryTick />}
       interval={categoryInterval(model.type, data.length)}
@@ -398,6 +457,7 @@ function CartesianView({
       />
     ) : readable ? (
       <YAxis
+        {...axisStyle}
         type="category"
         dataKey="xLabel"
         width={readableAxisWidth(data.map((d) => d.xLabel), measuredWidth)}
@@ -405,10 +465,10 @@ function CartesianView({
         interval={0}
       />
     ) : (
-      <YAxis type="category" dataKey="xLabel" width={112} tick={<CategoryTick horizontal />} interval={0} />
+      <YAxis type="category" dataKey="xLabel" width={112} tick={<CategoryTick horizontal />} interval={0} {...axisStyle} />
     )
   ) : (
-    <YAxis tickFormatter={valueTick} tick={AXIS_TICK} width={88} allowDecimals={axis.allowDecimals} tickCount={axis.tickCount} />
+    <YAxis tickFormatter={valueTick} tick={AXIS_TICK} width={88} allowDecimals={axis.allowDecimals} tickCount={axis.tickCount} {...axisStyle} />
   );
 
   const chart: ReactElement<{ width?: number; height?: number }> =
@@ -419,9 +479,23 @@ function CartesianView({
             {yAxis}
             {tooltip}
             {legend}
-            <HatchDefs chartId={chartId} count={model.series.length} />
+            <HatchDefs chartId={chartId} count={model.series.length} palette={palette} />
             {model.series.map((s, i) => (
-              <Bar key={s.key} dataKey={s.key} name={s.label} fill={fillAt(chartId, i)} stackId={stackId} maxBarSize={maxBarSize} isAnimationActive={false}>
+              <Bar
+                key={s.key}
+                dataKey={s.key}
+                name={s.label}
+                fill={fillAt(chartId, i, palette)}
+                stackId={stackId}
+                maxBarSize={maxBarSize}
+                isAnimationActive={false}
+                {...(fresh && {
+                  radius: barRadius(horizontal, !model.stacked || i === model.series.length - 1),
+                  // A very short bar keeps enough length for its rounded end; an empty one stays empty.
+                  minPointSize: model.stacked ? 0 : (v: number | null | undefined) => (v ? BAR_RADIUS : 0),
+                  activeBar: { stroke: 'var(--foreground)', strokeOpacity: 0.35, strokeWidth: 1.5 },
+                })}
+              >
                 {labelled && !model.stacked && (
                   <LabelList
                     dataKey={s.key}
@@ -433,7 +507,7 @@ function CartesianView({
               </Bar>
             ))}
           </BarChart>
-        ) : model.type === 'line' ? (
+        ) : !filled ? (
           <LineChart data={data} margin={{ top: 16, right: 24, left: 4, bottom: 4 }}>
             {grid}
             {xAxis}
@@ -465,27 +539,59 @@ function CartesianView({
             {yAxis}
             {tooltip}
             {legend}
-            <HatchDefs chartId={chartId} count={model.series.length} />
-            {model.series.map((s, i) => (
-              <Area
-                key={s.key}
-                dataKey={s.key}
-                name={s.label}
-                stroke={colourAt(i)}
-                fill={fillAt(chartId, i)}
-                fillOpacity={0.2}
-                strokeWidth={2}
-                strokeDasharray={dashAt(i)}
-                stackId={stackId}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
-            ))}
+            <HatchDefs chartId={chartId} count={model.series.length} palette={palette} />
+            {fresh && <GradientDefs chartId={chartId} count={model.series.length} />}
+            {model.series.map((s, i) =>
+              fresh ? (
+                <Area
+                  key={s.key}
+                  dataKey={s.key}
+                  name={s.label}
+                  stroke={colourAt(i, palette)}
+                  fill={isHatched(i) ? fillAt(chartId, i, palette) : `url(#${gradientId(chartId, i)})`}
+                  fillOpacity={isHatched(i) ? 0.2 : 1}
+                  strokeWidth={2.4}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  strokeDasharray={dashAt(i)}
+                  stackId={model.type === 'area' ? stackId : undefined}
+                  dot={model.type === 'line' ? { r: 3, fill: colourAt(i, palette) } : false}
+                  activeDot={{ r: 5, stroke: 'var(--card)', strokeWidth: 2 }}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                >
+                  {model.type === 'line' && labelled && model.series.length === 1 && (
+                    <LabelList dataKey={s.key} position="top" fontSize={11} formatter={(v: unknown) => formatValue(v as number, s.format)} />
+                  )}
+                </Area>
+              ) : (
+                <Area
+                  key={s.key}
+                  dataKey={s.key}
+                  name={s.label}
+                  stroke={colourAt(i)}
+                  fill={fillAt(chartId, i)}
+                  fillOpacity={0.2}
+                  strokeWidth={2}
+                  strokeDasharray={dashAt(i)}
+                  stackId={stackId}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              ),
+            )}
           </AreaChart>
         );
 
   return (
-    <div role="img" aria-label={ariaLabel} className="w-full" style={{ height }} data-orientation={horizontal ? 'horizontal' : 'vertical'}>
+    <div
+      role="img"
+      aria-label={ariaLabel}
+      className="w-full"
+      style={{ height }}
+      data-orientation={horizontal ? 'horizontal' : 'vertical'}
+      data-chart-style={palette}
+    >
       {printing ? (
         // In print: drawn at the page's content width and the print height (no screen measurement).
         cloneElement(chart, { width: chartWidth, height })
