@@ -103,3 +103,13 @@ export const dashboardDataLimit: RequestHandler = rateLimit({
   keyGenerator: (req) => (req.auth ? `dashboard-data:${req.auth.userId}` : ipKey(req)),
   handler,
 });
+
+/** Saving the dashboard to a report: 20 per minute per user, the same limit as ask (its own counter). */
+export const dashboardSaveLimit: RequestHandler = rateLimit({
+  windowMs: WINDOW_MS,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.auth ? `dashboard-save:${req.auth.userId}` : ipKey(req)),
+  handler,
+});

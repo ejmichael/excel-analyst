@@ -36,6 +36,7 @@ function block(over: Partial<Block>): Block {
     status: 'ok',
     source: 'user',
     has_source_rows: false,
+    filters: null,
     created_at: '2026-11-16T10:00:00+02:00',
     ...over,
   };

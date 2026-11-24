@@ -4,7 +4,8 @@ import { supabaseAdmin } from '../lib/supabase.js';
 import type { BlockDraft } from './analysis/ask.js';
 import type { ReconcileSkipReason } from './analysis/reconcileGuard.js';
 import { recordUsage } from './usageEvents.js';
-import type { Block, BlockCheck, BlockSource, BlockStatus, CellValue, ChartSpec, ResultColumn } from '../types/api.js';
+import type { Block, BlockCheck, BlockSource, BlockStatus, CellValue, ChartSpec, DashboardFilterValue, ResultColumn } from '../types/api.js';
+import type { ResolvedFilter } from './dashboard/data.js';
 
 /** Database rows for blocks and their mapping to the contract's Block. */
 
@@ -29,13 +30,20 @@ export interface BlockRow {
   status: BlockStatus;
   source: BlockSource;
   model: string | null;
+  /** source 'dashboard': the filters in force when saved, with their columns ([] = none); null otherwise. */
+  filters: ResolvedFilter[] | null;
   created_at: string;
 }
 
 export const BLOCK_COLUMNS =
-  'id, owner_id, dataset_id, question, title, sql, source_filter_sql, columns, rows, row_count, truncated, chart, reconcile, narrative_template, narrative, follow_ups, checks, status, source, model, created_at';
+  'id, owner_id, dataset_id, question, title, sql, source_filter_sql, columns, rows, row_count, truncated, chart, reconcile, narrative_template, narrative, follow_ups, checks, status, source, model, filters, created_at';
 
-/** has_source_rows: a source filter exists and the dataset still exists (API_CONTRACT, Block). */
+/** The API form of stored dashboard filters: what the request sent (normalised), without columns or labels. */
+export function toFilterValues(filters: ResolvedFilter[]): DashboardFilterValue[] {
+  return filters.map((f) => (f.kind === 'date_range' ? { filter_id: f.filter_id, from: f.from, to: f.to } : { filter_id: f.filter_id, values: f.values }));
+}
+
+/** has_source_rows: a source filter exists (or the block is a saved dashboard widget) and the dataset still exists. */
 export function toBlock(r: BlockRow): Block {
   return {
     id: r.id,
@@ -53,7 +61,8 @@ export function toBlock(r: BlockRow): Block {
     checks: r.checks ?? [],
     status: r.status,
     source: r.source,
-    has_source_rows: Boolean(r.source_filter_sql) && r.dataset_id !== null,
+    has_source_rows: (Boolean(r.source_filter_sql) || r.source === 'dashboard') && r.dataset_id !== null,
+    filters: r.filters ? toFilterValues(r.filters) : null,
     created_at: r.created_at,
   };
 }

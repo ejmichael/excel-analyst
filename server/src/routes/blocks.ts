@@ -8,6 +8,7 @@ import { llm } from '../llm/client.js';
 import { askRateLimit } from '../middleware/rateLimit.js';
 import { requireUuidParam, validate, validQuery } from '../middleware/validate.js';
 import { ask, AskLlmFailure } from '../services/analysis/ask.js';
+import { scopePredicate } from '../services/dashboard/data.js';
 import { BLOCK_COLUMNS, type BlockRow, getOwnBlock, saveAnsweredBlock, toBlock } from '../services/blocks.js';
 import { type ColumnRow, type DatasetRow, getColumns, getOwnDataset } from '../services/datasets.js';
 import { todaySast } from '../services/dates.js';
@@ -135,11 +136,15 @@ blocksRouter.get('/blocks/:id/source-rows', requireUuidParam(), validate({ query
   const { userId, token } = authOf(req);
   const q = validQuery<z.infer<typeof sourceQuery>>(req);
   const block = await getOwnBlock(supabaseForUser(token), userId, req.params.id as string);
-  if (!block.source_filter_sql || !block.dataset_id) throw notFound('This answer has no source rows.');
+  const fromDashboard = block.source === 'dashboard' && block.filters !== null;
+  if ((!block.source_filter_sql && !fromDashboard) || !block.dataset_id) throw notFound('This answer has no source rows.');
   const { columns, csv } = await readyDataset(token, userId, block.dataset_id);
 
-  let where = `(${block.source_filter_sql})`;
-  const params: Array<string> = [];
+  // A saved dashboard widget's rows are the file inside its saved filters, rebuilt as on the dashboard: column names
+  // from the stored filters (quoted), every value a bound parameter. No filters: the whole file.
+  const scope = fromDashboard ? scopePredicate(block.filters!) : null;
+  let where = scope ? `(${scope.where || 'TRUE'})` : `(${block.source_filter_sql})`;
+  const params: Array<string> = scope ? [...scope.params] : [];
   if (q.eq_column !== undefined) {
     const col = columns.find((c) => c.sql_name === q.eq_column);
     if (!col) {
@@ -148,7 +153,7 @@ blocksRouter.get('/blocks/:id/source-rows', requireUuidParam(), validate({ query
       });
     }
     // eq_value is bound as a parameter and cast to the column's type in SQL; it never becomes SQL text.
-    where += ` AND ${quoteIdent(col.sql_name)} = CAST($1 AS ${CAST_TYPES[col.data_type]})`;
+    where += ` AND ${quoteIdent(col.sql_name)} = CAST($${params.length + 1} AS ${CAST_TYPES[col.data_type]})`;
     params.push(q.eq_value!);
   }
   const select = columns.map((c) => quoteIdent(c.sql_name)).join(', ');

@@ -104,7 +104,7 @@ describe('dashboard filters restrict the rows the widgets read', () => {
   });
 
   it('values are bound parameters, and column names come from the dashboard', () => {
-    const { where, params } = scopePredicate([{ kind: 'category', column: 'priority', values: ["x' OR '1'='1"] }]);
+    const { where, params } = scopePredicate([{ filter_id: 'cat:priority', label: 'Priority', kind: 'category', column: 'priority', values: ["x' OR '1'='1"] }]);
     expect(where).toBe('(CAST("priority" AS VARCHAR) IN ($1))');
     expect(params).toEqual(["x' OR '1'='1"]);
     expect(scopedSql('WITH a AS (SELECT 1 AS x) SELECT x FROM a', 'p')).toBe('WITH data AS (SELECT * FROM data WHERE p), a AS (SELECT 1 AS x) SELECT x FROM a');

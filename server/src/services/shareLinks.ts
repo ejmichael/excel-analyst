@@ -140,6 +140,7 @@ export function toPublicReport(detail: ReportDetail, showWorking: boolean, logoU
         status: b.status,
         source: b.source,
         has_source_rows: false,
+        filters: b.filters,
         created_at: b.created_at,
       };
       return { position: rb.position, heading_override: rb.heading_override, block };

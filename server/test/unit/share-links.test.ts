@@ -85,6 +85,7 @@ describe('the public report shape', () => {
     status: 'flagged',
     source: 'user',
     has_source_rows: true,
+    filters: null,
     created_at: '2026-11-16T10:00:00+02:00',
   };
   const detail: ReportDetail = {

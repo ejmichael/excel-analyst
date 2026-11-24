@@ -28,9 +28,11 @@ export const dashboardDataBody = z.strictObject({
 });
 export type DashboardDataBody = z.infer<typeof dashboardDataBody>;
 
-export type ResolvedFilter =
-  | { kind: 'date_range'; column: string; from: string | null; to: string | null }
-  | { kind: 'category'; column: string; values: string[] };
+/** A request filter checked against the dashboard; filter_id and label are kept for blocks saved to a report (W3). */
+export type ResolvedFilter = { filter_id: string; label: string; column: string } & (
+  | { kind: 'date_range'; from: string | null; to: string | null }
+  | { kind: 'category'; values: string[] }
+);
 
 /** A real calendar date in YYYY-MM-DD, written back by the server (or null for a bad one). */
 function isoDate(s: string): string | null {
@@ -59,12 +61,12 @@ export function resolveFilters(dashboard: DashboardFilter[], body: DashboardData
       if (f.from && !from) return at('from', 'Use a date as YYYY-MM-DD.');
       if (f.to && !to) return at('to', 'Use a date as YYYY-MM-DD.');
       if (from && to && from > to) return at('from', 'The start date is after the end date.');
-      if (from || to) out.push({ kind: 'date_range', column: known.column, from, to });
+      if (from || to) out.push({ filter_id: known.id, label: known.label, kind: 'date_range', column: known.column, from, to });
       return;
     }
     if (f.from != null || f.to != null) return at('from', 'A category filter takes a list of values, not dates.');
     // An empty list means no restriction from this filter.
-    if (f.values && f.values.length > 0) out.push({ kind: 'category', column: known.column, values: [...new Set(f.values)] });
+    if (f.values && f.values.length > 0) out.push({ filter_id: known.id, label: known.label, kind: 'category', column: known.column, values: [...new Set(f.values)] });
   });
   if (fields.length > 0) throw new AppError('validation_failed', 'Some filters are not valid.', { fields } satisfies ValidationFailedDetails);
   return out;
