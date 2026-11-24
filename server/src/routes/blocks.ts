@@ -95,6 +95,8 @@ blocksRouter.get('/datasets/:id/blocks', requireUuidParam(), validate({ query: p
     .select(BLOCK_COLUMNS, { count: 'exact' })
     .eq('owner_id', userId)
     .eq('dataset_id', req.params.id as string)
+    // The Ask history lists answered questions; widgets saved from the dashboard live only in their reports.
+    .neq('source', 'dashboard')
     .order('created_at', { ascending: false })
     .range(q.offset, q.offset + q.limit - 1)
     .returns<BlockRow[]>();

@@ -19,7 +19,9 @@ import {
   saveDashboardBlocks,
   type SaveToReportBody,
   saveToReportBody,
+  sharedReport,
 } from '../services/dashboard/save.js';
+import { hasLiveShareLink } from '../services/shareLinks.js';
 import { beginPlanning, readDashboard, toDashboard } from '../services/dashboard/storage.js';
 import { type DatasetRow, getColumns, getOwnDataset } from '../services/datasets.js';
 import { assertWithinLimit } from '../services/limits.js';
@@ -110,6 +112,8 @@ dashboardsRouter.post('/datasets/:id/dashboard/save-to-report', requireUuidParam
   if (body.report_id) {
     const report = await getOwnReport(db, userId, body.report_id);
     if (report.workspace_id !== dataset.workspace_id) throw otherWorkspace();
+    // Public pages read the live blocks, so adding to a report with a working share link would publish new data.
+    if (await hasLiveShareLink(db, userId, report.id)) throw sharedReport();
     if ((await getMembers(db, userId, report.id)).length + widgets.length > MAX_REPORT_BLOCKS) throw reportFull();
   } else {
     await assertWithinLimit(userId, 'max_reports_per_month');
@@ -125,7 +129,7 @@ dashboardsRouter.post('/datasets/:id/dashboard/save-to-report', requireUuidParam
   // One usage row per save, written once everything is saved. A new report counts as a report like any other; an
   // append counts nothing. The blocks are not questions.
   const meta = { purpose: 'dashboard_save', report_id: reportId, dataset_id: dataset.id, dashboard_id: row.id, blocks: drafts.length, filters: filters.length };
-  await recordUsage(userId, body.report_id ? 'report_run' : 'report', meta);
+  await recordUsage(userId, body.report_id ? 'dashboard_save' : 'report', meta);
   logger.info({ dashboard_id: row.id, report_id: reportId, appended: Boolean(body.report_id), blocks: drafts.length, filters: filters.length, ms: Date.now() - started }, 'dashboard saved to report');
 
   const report = await getOwnReport(db, userId, reportId);

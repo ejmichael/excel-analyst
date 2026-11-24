@@ -3,7 +3,7 @@ import { logger } from '../lib/logger.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import type { LlmUsage } from '../llm/client.js';
 
-export type UsageKind = 'upload' | 'question' | 'report' | 'report_run' | 'export' | 'share' | 'llm' | 'feedback';
+export type UsageKind = 'upload' | 'question' | 'report' | 'report_run' | 'export' | 'share' | 'llm' | 'feedback' | 'dashboard_save';
 
 /** meta holds ids, purposes, sizes and timings only. NEVER file content, prompts or model output. */
 export type UsageMeta = Record<string, string | number | boolean | null>;

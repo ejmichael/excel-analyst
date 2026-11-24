@@ -119,6 +119,9 @@ export async function runWidgetsForSave(
 
 export const REPORT_FULL_MESSAGE = `A report holds at most ${MAX_REPORT_BLOCKS} answers. Choose fewer widgets or another report.`;
 export const reportFull = () => invalid(REPORT_FULL_MESSAGE, [{ location: 'body', path: 'widget_ids', message: REPORT_FULL_MESSAGE }]);
+export const SHARED_REPORT_MESSAGE =
+  'This report has a working share link, so adding to it would publish new data on that link. Revoke the link first, or save to a new report.';
+export const sharedReport = () => invalid(SHARED_REPORT_MESSAGE, [{ location: 'body', path: 'report_id', message: SHARED_REPORT_MESSAGE }]);
 export const otherWorkspace = () => invalid(OTHER_WORKSPACE_MESSAGE, [{ location: 'body', path: 'report_id', message: OTHER_WORKSPACE_MESSAGE }]);
 
 /** Writes the blocks and the new or appended report in one transaction. Returns the report id. */

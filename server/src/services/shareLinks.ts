@@ -54,6 +54,19 @@ export function toShareLink(r: ShareLinkRow, containsPersonalData: boolean): Sha
 export const isLive = (r: Pick<ShareLinkRow, 'revoked_at' | 'expires_at'>, now = Date.now()) =>
   r.revoked_at === null && (r.expires_at === null || Date.parse(r.expires_at) > now);
 
+/** True when the report has a link that still opens (not revoked, not expired). */
+export async function hasLiveShareLink(db: SupabaseClient, ownerId: string, reportId: string): Promise<boolean> {
+  const { data, error } = await db
+    .from('share_links')
+    .select('revoked_at, expires_at')
+    .eq('owner_id', ownerId)
+    .eq('report_id', reportId)
+    .is('revoked_at', null)
+    .returns<Array<Pick<ShareLinkRow, 'revoked_at' | 'expires_at'>>>();
+  throwIfDbError('share links: live check', error);
+  return (data ?? []).some((r) => isLive(r));
+}
+
 // ---------- contains_personal_data ----------
 
 type PiiColumn = Pick<PromptColumn, 'name' | 'sql_name' | 'semantic' | 'is_pii'>;
