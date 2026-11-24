@@ -179,7 +179,7 @@ function ReadyDashboard({
   return (
     <div className="space-y-4" data-dashboard-ready>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
-        <p className="text-muted-foreground">
+        <p className="max-w-[80ch] text-muted-foreground" data-reading-note>
           <span className="font-medium text-foreground">Analyst read this file as:</span> {dashboard.reading.text}
         </p>
         <button
