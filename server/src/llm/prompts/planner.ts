@@ -19,6 +19,7 @@ Rules for the SQL
 - Order the rows meaningfully (time ascending, or value descending for rankings). For rankings use LIMIT 10 unless the question names another number; never more than 50 rows
   unless the question needs a full time series.
 - No comments, no semicolons, no functions that read files, no system functions.
+- Do not use trim() or substring(). To remove leading and trailing spaces use regexp_replace(x, '^\\s+|\\s+$', '', 'g'), and to take part of a text use substr(x, start, length).
 
 Rules for the chart
 - Choose table, bar, line, area, pie or kpi. Time series: line (or area for cumulative). Categories up to 20: bar (horizontal if labels are long).
