@@ -123,7 +123,7 @@ function MobileNav() {
 function TopBar() {
   const me = useMe();
   return (
-    <header data-print="hide" className="sticky top-0 z-30 flex min-h-16 items-center gap-2 border-b bg-background/95 px-2 sm:px-6">
+    <header data-print="hide" className="sticky top-0 z-30 flex min-h-16 items-center gap-2 border-b bg-card px-2 sm:px-6">
       <MobileNav />
       <WorkspaceSwitcher />
       <div className="ml-auto flex items-center gap-1 sm:gap-3">

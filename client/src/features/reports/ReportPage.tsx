@@ -49,7 +49,7 @@ export function ReportPage() {
   const { id = '' } = useParams();
   const report = useReport(id);
   return (
-    <PageContainer variant="narrow" className="space-y-6">
+    <PageContainer variant="narrow" className="space-y-6" data-classic-theme>
       <BackLink />
       {report.isPending ? (
         <InlineLoading label="Loading the report" />

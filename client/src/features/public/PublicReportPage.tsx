@@ -75,7 +75,7 @@ export function PublicReportPage() {
 
   return (
     // A warm grey desk with the report as a white A4-width sheet on it (white and edge to edge in print).
-    <div data-print-shell className="min-h-dvh bg-[#E9E8E1]">
+    <div data-print-shell data-classic-theme className="min-h-dvh bg-[#E9E8E1]">
       {query.isPending ? (
         <main className="mx-auto max-w-[210mm] px-4 py-6">
           <InlineLoading label="Loading the report" />
