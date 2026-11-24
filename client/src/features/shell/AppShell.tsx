@@ -46,7 +46,7 @@ function ShellLayout() {
         <div className="flex min-w-0 flex-col">
           <TopBar />
           {/* Room for the report tray: a bar at the bottom on small screens, a side panel on wide ones. */}
-          <main id="main" className={cn('flex-1 px-4 py-6 sm:px-8', trayOpen && 'pb-28 lg:pr-[22rem] lg:pb-6')}>
+          <main id="main" className={cn('flex-1 py-6', trayOpen && 'pb-28 lg:pr-[22rem] lg:pb-6')}>
             <Outlet />
           </main>
         </div>

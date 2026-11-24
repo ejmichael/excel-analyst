@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useMe } from '@/auth/useMe';
+import { PageContainer } from '@/components/PageContainer';
 import { InlineLoading } from '@/components/PageStatus';
 import { PageHeader } from '@/features/shell/pages';
 import { WorkspacesSection } from '@/features/workspaces/WorkspacesSection';
@@ -15,7 +16,7 @@ export function SettingsPage() {
   }, [hash, me.data]);
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <PageContainer variant="narrow">
       <PageHeader title="Settings" />
       {me.data ? (
         <div className="space-y-6">
@@ -37,6 +38,6 @@ export function SettingsPage() {
       ) : (
         <InlineLoading />
       )}
-    </div>
+    </PageContainer>
   );
 }

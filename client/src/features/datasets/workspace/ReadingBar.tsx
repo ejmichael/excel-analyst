@@ -15,7 +15,7 @@ export function ReadingBar({ dataset, onChange }: { dataset: DatasetDetail; onCh
   const [full, setFull] = useState(false);
   const textId = useId();
   return (
-    <section aria-labelledby="reading-heading" className="flex items-center gap-2 rounded-2xl border bg-card py-1 pr-1 pl-4 sm:gap-3">
+    <section aria-labelledby="reading-heading" className="flex max-w-[80ch] items-center gap-2 rounded-2xl border bg-card py-1 pr-1 pl-4 sm:gap-3">
       <FileCog className="size-5 shrink-0 text-primary" aria-hidden />
       <p id={textId} className={cn('my-2 min-w-0 flex-1 text-sm', !full && 'line-clamp-2 sm:line-clamp-none sm:truncate')} title={`How we read this file: ${text}`}>
         <span id="reading-heading" className="font-medium">

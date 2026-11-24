@@ -47,7 +47,7 @@ export function WarningsNotice({ dataset, onCheckReading }: { dataset: DatasetDe
     });
   };
   return (
-    <section aria-labelledby={`${bodyId}-heading`} className="rounded-2xl border border-warning/40 bg-warning-bg" data-warnings-notice>
+    <section aria-labelledby={`${bodyId}-heading`} className="max-w-[80ch] rounded-2xl border border-warning/40 bg-warning-bg" data-warnings-notice>
       <h2 id={`${bodyId}-heading`} className="font-sans text-sm">
         <button
           type="button"

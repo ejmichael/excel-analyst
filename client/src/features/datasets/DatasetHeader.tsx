@@ -138,7 +138,7 @@ export function DatasetHeader({ dataset }: { dataset: DatasetDetail }) {
         </div>
       )}
 
-      <p className="text-sm text-muted-foreground tabular break-words" data-file-summary>
+      <p className="max-w-[80ch] text-sm text-muted-foreground tabular break-words" data-file-summary>
         {summary}
       </p>
 

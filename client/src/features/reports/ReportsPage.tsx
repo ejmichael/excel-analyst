@@ -3,6 +3,7 @@ import { ChevronRight, FileText } from 'lucide-react';
 import { errorMessage } from '@/api/client';
 import type { Report } from '@/api/types';
 import { FormMessage } from '@/components/FormField';
+import { PageContainer } from '@/components/PageContainer';
 import { InlineLoading } from '@/components/PageStatus';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatNumber } from '@/lib/format';
@@ -18,7 +19,7 @@ export function ReportsPage() {
   const reports = list.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <PageContainer variant="narrow" className="space-y-6">
       <PageHeader title="Reports" description={active ? `Workspace: ${active.name}` : undefined} />
       {!active || list.isPending ? (
         <InlineLoading label="Loading your reports" />
@@ -54,7 +55,7 @@ export function ReportsPage() {
           )}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

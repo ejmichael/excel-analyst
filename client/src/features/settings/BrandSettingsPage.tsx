@@ -7,6 +7,7 @@ import { deleteLogo, uploadLogo } from '@/api/reports';
 import type { Me, PlanLimitDetails } from '@/api/types';
 import { meKey, useMe, useUpdateMe } from '@/auth/useMe';
 import { FieldError, FormMessage, TextField } from '@/components/FormField';
+import { PageContainer } from '@/components/PageContainer';
 import { InlineLoading } from '@/components/PageStatus';
 import { UpgradeDialog, type LocalPlanLimit } from '@/components/UpgradeDialog';
 import { Button } from '@/components/ui/button';
@@ -33,14 +34,14 @@ const BRANDING_LIMIT: LocalPlanLimit = { limit_key: 'branding', limit: 0, used: 
 export function BrandSettingsPage() {
   const me = useMe();
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <PageContainer variant="narrow" className="max-w-3xl space-y-6">
       <Link to="/settings" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline">
         <ArrowLeft className="size-4" aria-hidden />
         Settings
       </Link>
       <PageHeader title="Your brand" description="How your reports look: your business name, colour and logo." />
       {me.data ? <BrandForm me={me.data} /> : <InlineLoading />}
-    </div>
+    </PageContainer>
   );
 }
 

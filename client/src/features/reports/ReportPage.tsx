@@ -7,6 +7,7 @@ import { getDataset } from '@/api/datasets';
 import type { ID, ReportDetail } from '@/api/types';
 import { meKey } from '@/auth/useMe';
 import { FieldError, FormMessage, TextField } from '@/components/FormField';
+import { PageContainer } from '@/components/PageContainer';
 import { InlineLoading } from '@/components/PageStatus';
 import { Button } from '@/components/ui/button';
 import {
@@ -48,7 +49,7 @@ export function ReportPage() {
   const { id = '' } = useParams();
   const report = useReport(id);
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <PageContainer variant="narrow" className="space-y-6">
       <BackLink />
       {report.isPending ? (
         <InlineLoading label="Loading the report" />
@@ -59,7 +60,7 @@ export function ReportPage() {
       ) : (
         <ReportView report={report.data} />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

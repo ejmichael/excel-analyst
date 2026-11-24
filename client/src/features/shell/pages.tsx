@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { Construction } from 'lucide-react';
+import { PageContainer } from '@/components/PageContainer';
 import { Button } from '@/components/ui/button';
 import { useActiveWorkspace } from '@/features/workspaces/WorkspaceProvider';
 import { AuthLayout } from '@/features/auth/AuthLayout';
@@ -17,13 +18,13 @@ export function PageHeader({ title, description }: { title: string; description?
 export function PlaceholderPage({ title }: { title: string }) {
   const { active } = useActiveWorkspace();
   return (
-    <div className="mx-auto max-w-4xl">
+    <PageContainer variant="narrow">
       <PageHeader title={title} description={active ? `Workspace: ${active.name}` : undefined} />
       <div className="flex items-start gap-3 rounded-xl border bg-card p-6">
         <Construction className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
         <p>Coming in the next part.</p>
       </div>
-    </div>
+    </PageContainer>
   );
 }
 

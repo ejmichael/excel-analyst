@@ -5,10 +5,12 @@ import { errorMessage, isApiError } from '@/api/client';
 import type { DatasetDetail } from '@/api/types';
 import { useMe } from '@/auth/useMe';
 import { FormMessage } from '@/components/FormField';
+import { PageContainer } from '@/components/PageContainer';
 import { InlineLoading } from '@/components/PageStatus';
 import { UpgradeDialog } from '@/components/UpgradeDialog';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatNumber } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { DatasetHeader } from './DatasetHeader';
 import { ParseDialog } from './ParseDialog';
 import { ProfilingState } from './ProfilingState';
@@ -43,7 +45,7 @@ export function DatasetPage() {
   const query = useDatasetPolling(id);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <PageContainer variant="wide" className="space-y-4">
       <BackLink />
       {query.isPending ? (
         <InlineLoading label="Loading the file" />
@@ -63,7 +65,7 @@ export function DatasetPage() {
       ) : (
         <DatasetView dataset={query.data} slow={query.isSlow} tab={tab} />
       )}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -92,7 +94,7 @@ function DatasetView({ dataset, slow, tab }: { dataset: DatasetDetail; slow: boo
       {(dataset.status === 'profiling' || dataset.status === 'uploading') && <ProfilingState slow={slow} />}
       {dataset.status === 'failed' && <FailedPanel dataset={dataset} onCheckReading={openParse} />}
       {dataset.status === 'expired' && (
-        <div className="flex items-start gap-3 rounded-2xl border bg-card p-6">
+        <div className="flex max-w-[80ch] items-start gap-3 rounded-2xl border bg-card p-6">
           <Archive className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
           <p>
             {dataset.expires_at
@@ -106,7 +108,7 @@ function DatasetView({ dataset, slow, tab }: { dataset: DatasetDetail; slow: boo
       {active && (
         <div className="space-y-5">
           <TabBar datasetId={dataset.id} tabs={tabs} active={active} badges={{ quality: <QualityBadge dataset={dataset} /> }} />
-          <div role="tabpanel" id={panelId(active)} aria-labelledby={tabId(active)} tabIndex={-1} className="outline-none">
+          <div role="tabpanel" id={panelId(active)} aria-labelledby={tabId(active)} tabIndex={-1} className={cn('outline-none', PANEL_WIDTH[active])}>
             <TabPanel tab={active} dataset={dataset} />
           </div>
         </div>
@@ -121,6 +123,15 @@ function DatasetView({ dataset, slow, tab }: { dataset: DatasetDetail; slow: boo
     </>
   );
 }
+
+/** How wide each tab's content may grow on a wide screen: answers and reports read best capped; the table and the dashboard use it all. */
+const PANEL_WIDTH: Record<WorkspaceTab, string> = {
+  dashboard: '',
+  data: '',
+  quality: 'max-w-[1200px]',
+  ask: 'max-w-[1100px]',
+  reports: 'max-w-[1100px]',
+};
 
 function TabPanel({ tab, dataset }: { tab: WorkspaceTab; dataset: DatasetDetail }) {
   switch (tab) {
@@ -163,7 +174,7 @@ function FailedPanel({ dataset, onCheckReading }: { dataset: DatasetDetail; onCh
   // Flow A step 5: a plan-limit failure (max_rows) carries structured details, including the plan that allows it.
   const rowLimit = dataset.error_details;
   return (
-    <div role="alert" className="rounded-2xl border border-destructive/40 bg-card p-6">
+    <div role="alert" className="max-w-[80ch] rounded-2xl border border-destructive/40 bg-card p-6">
       <div className="flex items-start gap-3">
         <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
         <div className="space-y-3">

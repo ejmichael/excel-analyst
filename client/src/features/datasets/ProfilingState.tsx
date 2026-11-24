@@ -15,7 +15,7 @@ export function ProfilingState({ slow }: { slow: boolean }) {
   }, [stage]);
 
   return (
-    <div className="rounded-xl border bg-card p-6">
+    <div className="max-w-[80ch] rounded-xl border bg-card p-6">
       <div className="flex items-start gap-3">
         <LoaderCircle className="mt-0.5 size-5 shrink-0 text-primary motion-safe:animate-spin" aria-hidden />
         <div className="space-y-3" aria-live="polite">
