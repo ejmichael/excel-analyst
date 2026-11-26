@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { isApiError } from '@/api/client';
-import { getDashboard, getDashboardData, planDashboard } from '@/api/dashboards';
-import type { Dashboard, DashboardFilterValue, ID } from '@/api/types';
+import { getDashboard, getDashboardData, planDashboard, saveDashboardToReport } from '@/api/dashboards';
+import type { Dashboard, DashboardFilterValue, ID, SaveDashboardToReportRequest } from '@/api/types';
+import { meKey } from '@/auth/useMe';
+import { reportKeys } from '@/features/reports/queries';
 
 export const dashboardKeys = {
   all: (datasetId: ID) => ['dashboards', datasetId] as const,
@@ -110,4 +112,38 @@ export function useDashboardData(datasetId: ID, dashboard: Dashboard | null, fil
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
+}
+
+/**
+ * Saves the dashboard to a report. A second call while one is pending is ignored (never two requests). Afterwards the
+ * reports list, that report and the monthly counts are read again.
+ */
+export function useSaveDashboardToReport(datasetId: ID) {
+  const client = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (body: SaveDashboardToReportRequest) => saveDashboardToReport(datasetId, body),
+    onSuccess: ({ report }) => {
+      void client.invalidateQueries({ queryKey: reportKeys.list(report.workspace_id) });
+      void client.invalidateQueries({ queryKey: reportKeys.detail(report.id) });
+      void client.invalidateQueries({ queryKey: meKey });
+    },
+  });
+  const { mutate } = mutation;
+  // A ref, not isPending: two clicks in one frame both see isPending false.
+  const busy = useRef(false);
+  const save = useCallback(
+    (body: SaveDashboardToReportRequest, options?: Parameters<typeof mutate>[1]) => {
+      if (busy.current) return;
+      busy.current = true;
+      mutate(body, {
+        ...options,
+        onSettled: (...args) => {
+          busy.current = false;
+          options?.onSettled?.(...args);
+        },
+      });
+    },
+    [mutate],
+  );
+  return { ...mutation, save };
 }

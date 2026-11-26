@@ -299,6 +299,7 @@ export function blockFrom(
     status: template.checks.some((c) => !c.ok) ? 'flagged' : 'ok',
     source,
     has_source_rows: template.has_source_rows && datasetId !== null,
+    filters: null,
     created_at: createdAt,
   };
 }

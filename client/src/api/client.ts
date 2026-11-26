@@ -112,13 +112,13 @@ async function sendAuthorised(send: (headers: Record<string, string>) => Promise
  * The shared request cycle: sendAuthorised, then unwrap { data }, or throw ApiError and fire the global
  * 401 / consent_required handlers.
  */
-async function authorised<T>(send: (headers: Record<string, string>) => Promise<Response>): Promise<T> {
+async function authorised<T>(send: (headers: Record<string, string>) => Promise<Response>): Promise<{ data: T; status: number }> {
   const response = await sendAuthorised(send);
   const payload: unknown = await response.json().catch(() => null);
 
   if (response.ok) {
     if (payload && typeof payload === 'object' && 'data' in payload) {
-      return (payload as { data: T }).data;
+      return { data: (payload as { data: T }).data, status: response.status };
     }
     throw new ApiError(response.status, 'internal', ERROR_MESSAGES.internal);
   }
@@ -157,7 +157,12 @@ export async function apiDownload(path: string): Promise<Download> {
 }
 
 /** Calls our API with the Supabase access token, unwraps { data } and throws ApiError otherwise. */
-export function apiFetch<T>(path: string, { method = 'GET', body, signal }: ApiRequest = {}): Promise<T> {
+export async function apiFetch<T>(path: string, request: ApiRequest = {}): Promise<T> {
+  return (await apiFetchWithStatus<T>(path, request)).data;
+}
+
+/** As apiFetch, with the success status too (for endpoints where 200 and 201 mean different things). */
+export function apiFetchWithStatus<T>(path: string, { method = 'GET', body, signal }: ApiRequest = {}): Promise<{ data: T; status: number }> {
   return authorised<T>((headers) =>
     config.transport(`${API_BASE}${path}`, {
       method,
@@ -179,12 +184,12 @@ export interface UploadRequest {
 export type UploadTransport = (url: string, request: UploadRequest) => Promise<Response>;
 
 /** Multipart POST with progress; same auth, error mapping and global handlers as apiFetch. */
-export function apiUpload<T>(
+export async function apiUpload<T>(
   path: string,
   form: FormData,
   { onProgress, signal }: { onProgress: (fraction: number) => void; signal: AbortSignal },
 ): Promise<T> {
-  return authorised<T>((headers) => config.uploadTransport(`${API_BASE}${path}`, { form, headers, onProgress, signal }));
+  return (await authorised<T>((headers) => config.uploadTransport(`${API_BASE}${path}`, { form, headers, onProgress, signal }))).data;
 }
 
 function toApiError(status: number, payload: unknown, retryAfterSeconds: number | null): ApiError {

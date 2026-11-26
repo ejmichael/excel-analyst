@@ -36,6 +36,7 @@ const baseBlock = (over: Partial<Block> = {}): Block => ({
   status: 'ok',
   source: 'user',
   has_source_rows: true,
+  filters: null,
   created_at: '2026-11-02T10:15:00+02:00',
   ...over,
 });
