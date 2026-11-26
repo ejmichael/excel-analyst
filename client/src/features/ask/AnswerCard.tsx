@@ -4,6 +4,7 @@ import { errorMessage, isApiError } from '@/api/client';
 import { downloadBlockCsv } from '@/api/blocks';
 import type { Block } from '@/api/types';
 import { FormMessage } from '@/components/FormField';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -93,6 +94,11 @@ export function AnswerCard({
         <p data-answer-question className="text-sm text-muted-foreground break-words">
           <span className="sr-only">Question: </span>“{block.question}”
         </p>
+        {block.source === 'dashboard' && (
+          <Badge variant="outline" className="rounded-full text-muted-foreground" data-answer-tag>
+            From the dashboard
+          </Badge>
+        )}
         {/* Not on a report document (print or shared page): the report has its own date. */}
         <p data-answer-time className="text-sm text-muted-foreground">
           <time dateTime={block.created_at}>{formatDateTime(block.created_at)}</time>

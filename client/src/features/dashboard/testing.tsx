@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { configureApiClient } from '@/api/client';
 import type { ChartSpec, Dashboard, DashboardData, DashboardWidget, WidgetResult } from '@/api/types';
+import { SessionProvider } from '@/auth/SessionProvider';
+import { signedIn } from '@/test/session';
 
 export function chart(type: ChartSpec['type'], x: string | null, y: string[], value_format: ChartSpec['value_format'] = {}): ChartSpec {
   return { type, x, y, series: null, orientation: 'vertical', stacked: false, value_format };
@@ -91,7 +93,7 @@ export function fakeCalls(answer: (call: Call) => Reply) {
   };
 }
 
-/** Renders the tab inside a router (a second route to leave it), optionally in React strict mode. */
+/** Renders the tab, signed in, inside a router (a second route to leave it), optionally in React strict mode. */
 export function renderTab(element: ReactElement, { path = '/datasets/d1/dashboard', strict = false } = {}) {
   const router = createMemoryRouter(
     [
@@ -103,7 +105,9 @@ export function renderTab(element: ReactElement, { path = '/datasets/d1/dashboar
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const tree = (
     <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
+      <SessionProvider backend={signedIn}>
+        <RouterProvider router={router} />
+      </SessionProvider>
     </QueryClientProvider>
   );
   render(strict ? <StrictMode>{tree}</StrictMode> : tree);

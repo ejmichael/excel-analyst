@@ -7,6 +7,7 @@ import { InlineLoading } from '@/components/PageStatus';
 import { Button } from '@/components/ui/button';
 import { formatCell, formatDate, formatNumber, formatValue } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { describeBlockFilters } from './blockFilters';
 import { useSourceRows } from './queries';
 
 /** What the answer card knows about the file behind it. */
@@ -190,6 +191,21 @@ export function SourceRowsPanel({ block, dataset }: { block: Block; dataset: Dat
   );
 }
 
+/** A saved dashboard answer: the filters it was run with, in words (plain text, never markup). */
+function FiltersLine({ block, columns }: { block: Block; columns: DatasetColumn[] }) {
+  const lines = describeBlockFilters(block.filters ?? [], columns);
+  return (
+    <div className="space-y-1" data-answer-filters>
+      <h4 className="font-sans text-sm font-semibold">Filters</h4>
+      <ul className="space-y-0.5 text-sm break-words">
+        {lines.map((line, i) => (
+          <li key={i}>{line}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** The "How this was calculated" disclosure. */
 export function HowCalculated({
   block,
@@ -226,6 +242,7 @@ export function HowCalculated({
               ? 'Analyst wrote a query, ran it on the file, and the numbers come from that result. The AI did not calculate them.'
               : 'Analyst wrote a query, ran it on your file, and the numbers below come from that result. The AI did not calculate them.'}
           </p>
+          {block.filters && block.filters.length > 0 && <FiltersLine block={block} columns={dataset.columns} />}
           {block.sql && <SqlPanel sql={block.sql} />}
           {block.checks.length > 0 && (
             <div className="space-y-2">

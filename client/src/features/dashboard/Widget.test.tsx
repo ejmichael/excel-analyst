@@ -221,7 +221,10 @@ describe('the grid', () => {
     const grid = document.querySelector('[data-widget-grid]')!;
     expect(grid).toHaveClass('grid-cols-12');
     expect(within(grid as HTMLElement).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['First', 'Second', 'Third']);
-    const labels = [...screen.getAllByRole('button'), ...screen.queryAllByRole('link')].map((b) => b.textContent ?? '');
+    // W3 adds one action, "Save to a report"; downloads and sharing stay on the report page.
+    const labels = [...screen.getAllByRole('button'), ...screen.queryAllByRole('link')]
+      .map((b) => b.textContent ?? '')
+      .filter((label) => label !== 'Save to a report');
     for (const label of labels) {
       expect(label).not.toMatch(/customi[sz]e|save to|report|excel|pdf|download|share|snapshot|insight|previous period|compare/i);
     }
