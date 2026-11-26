@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Skeleton } from '@/components/ui/skeleton';
 import { tabPath } from '@/features/datasets/workspace/tabs';
 import { DashboardBody } from './DashboardBody';
+import { SaveToReportButton } from './SaveToReportDialog';
 import { dashboardError } from './dashboardErrors';
 import { widthClass } from './layout';
 import { claimAutoPlan, planMutationKey, useDashboard, usePlanDashboard, usePlanningSlow } from './queries';
@@ -83,6 +84,9 @@ function PlanningCard({ datasetId }: { datasetId: string }) {
   const slow = usePlanningSlow(datasetId, true);
   return (
     <div className="space-y-4" data-dashboard-planning>
+      <div className="flex justify-end">
+        <SaveToReportButton disabledReason="The dashboard is still being planned." />
+      </div>
       <section role="status" className="rounded-2xl border bg-card p-6">
         <h2 className="text-lg font-semibold">Analyst is planning your dashboard</h2>
         <p className="mt-1 text-muted-foreground">This takes about a minute the first time.</p>
@@ -143,18 +147,23 @@ function FailedCard({
   planError: string | null;
 }) {
   return (
-    <div role="alert" className="rounded-2xl border border-destructive/40 bg-card p-6" data-dashboard-failed>
-      <div className="flex items-start gap-3">
-        <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold">Analyst could not build a dashboard for this file</h2>
-          <p>{dashboard.error_message ?? 'Something stopped Analyst from planning it.'}</p>
-          {planError && <FormMessage>{planError}</FormMessage>}
-          <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={onRetry} disabled={sending}>
-              {sending ? 'Starting…' : 'Try again'}
-            </Button>
-            <AskLink datasetId={datasetId} />
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <SaveToReportButton disabledReason="The dashboard could not be built, so there are no charts to save." />
+      </div>
+      <div role="alert" className="rounded-2xl border border-destructive/40 bg-card p-6" data-dashboard-failed>
+        <div className="flex items-start gap-3">
+          <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold">Analyst could not build a dashboard for this file</h2>
+            <p>{dashboard.error_message ?? 'Something stopped Analyst from planning it.'}</p>
+            {planError && <FormMessage>{planError}</FormMessage>}
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={onRetry} disabled={sending}>
+                {sending ? 'Starting…' : 'Try again'}
+              </Button>
+              <AskLink datasetId={datasetId} />
+            </div>
           </div>
         </div>
       </div>
@@ -178,32 +187,42 @@ function ReadyDashboard({
   const [confirm, setConfirm] = useState(false);
   return (
     <div className="space-y-4" data-dashboard-ready>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
-        <p className="max-w-[80ch] text-muted-foreground" data-reading-note>
-          <span className="font-medium text-foreground">Analyst read this file as:</span> {dashboard.reading.text}
-        </p>
-        <button
-          type="button"
-          onClick={() => setConfirm(true)}
-          className="inline-flex min-h-11 items-center rounded-md font-medium text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-        >
-          Rebuild dashboard
-        </button>
-      </div>
-      {planError && <FormMessage>{planError}</FormMessage>}
-
-      {dashboard.fallback && (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border bg-secondary/60 px-4 py-3 text-sm" data-dashboard-fallback>
-          <Info className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <p className="min-w-0 flex-1 text-muted-foreground">This is a basic dashboard. Analyst could not plan a custom one for this file.</p>
-          <Button variant="outline" size="sm" className="min-h-11 bg-card" onClick={onRebuild} disabled={sending}>
-            {sending ? 'Starting…' : 'Try again'}
-          </Button>
-        </div>
-      )}
-
       {/* A rebuilt dashboard starts afresh (its filters may differ). */}
-      <DashboardBody key={`${dashboard.id}:${dashboard.created_at}`} dashboard={dashboard} dataset={dataset} />
+      <DashboardBody
+        key={`${dashboard.id}:${dashboard.created_at}`}
+        dashboard={dashboard}
+        dataset={dataset}
+        header={(saveButton) => (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+              <p className="max-w-[80ch] text-muted-foreground" data-reading-note>
+                <span className="font-medium text-foreground">Analyst read this file as:</span> {dashboard.reading.text}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <button
+                  type="button"
+                  onClick={() => setConfirm(true)}
+                  className="inline-flex min-h-11 items-center rounded-md font-medium text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  Rebuild dashboard
+                </button>
+                {saveButton}
+              </div>
+            </div>
+            {planError && <FormMessage>{planError}</FormMessage>}
+
+            {dashboard.fallback && (
+              <div className="flex flex-wrap items-center gap-3 rounded-2xl border bg-secondary/60 px-4 py-3 text-sm" data-dashboard-fallback>
+                <Info className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <p className="min-w-0 flex-1 text-muted-foreground">This is a basic dashboard. Analyst could not plan a custom one for this file.</p>
+                <Button variant="outline" size="sm" className="min-h-11 bg-card" onClick={onRebuild} disabled={sending}>
+                  {sending ? 'Starting…' : 'Try again'}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      />
 
       <Dialog open={confirm} onOpenChange={(open) => !open && setConfirm(false)}>
         <DialogContent>

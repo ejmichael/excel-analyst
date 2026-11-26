@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { isApiError } from '@/api/client';
 import type { Dashboard, DashboardFilterValue, DatasetDetail } from '@/api/types';
 import { FormMessage } from '@/components/FormField';
+import { Toast } from '@/components/Toast';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { dashboardError } from './dashboardErrors';
 import { FilterBar } from './FilterBar';
 import { FILTERS_PARAM, hasBackwardsRange, parseFilters, sendable, serialiseFilters, toRequest, type FilterState } from './filters';
 import { dashboardKeys, useDashboardData } from './queries';
+import { SaveToReportButton, SaveToReportDialog, type SavedToReport } from './SaveToReportDialog';
+import { isWorking, savedMessage } from './saveToReport';
 import { Widget } from './Widget';
 
 /** A filter change waits this long for the next one, so a burst of changes sends one request. */
@@ -20,8 +23,17 @@ const sameFilters = (a: DashboardFilterValue[], b: DashboardFilterValue[]) => JS
 /**
  * A ready dashboard: the filter bar (its state in ?filters=) and the widgets. Every settled filter change asks the
  * server to run the widgets again; the previous results stay, dimmed, until the answer for the current filters comes.
+ * `header` draws the row above the filters, given the "Save to a report" button (which needs the results on screen).
  */
-export function DashboardBody({ dashboard, dataset }: { dashboard: Dashboard; dataset: DatasetDetail }) {
+export function DashboardBody({
+  dashboard,
+  dataset,
+  header,
+}: {
+  dashboard: Dashboard;
+  dataset: DatasetDetail;
+  header?: (saveButton: ReactNode) => ReactNode;
+}) {
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const raw = params.get(FILTERS_PARAM);
@@ -70,8 +82,21 @@ export function DashboardBody({ dashboard, dataset }: { dashboard: Dashboard; da
   const widgets = [...dashboard.widgets].sort((a, b) => a.position - b.position);
   const failure = query.isError && !query.isFetching ? dashboardError(query.error) : null;
 
+  // Saving: the charts on screen, with the filters they were run with (not a change still waiting in the bar).
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saved, setSaved] = useState<SavedToReport | null>(null);
+  const saveBlocked = !shown
+    ? 'The charts are still loading.'
+    : !widgets.some((w) => isWorking(results.get(w.id)))
+      ? 'None of the charts can be saved right now: each one has an error.'
+      : null;
+  const unapplied = Boolean(shown) && (backwards || !sameFilters(wanted, shown!.filters));
+  const saveTrigger = useRef<HTMLButtonElement>(null);
+  const saveButton = <SaveToReportButton ref={saveTrigger} disabledReason={saveBlocked} onClick={() => setSaveOpen(true)} />;
+
   return (
     <div className="space-y-4">
+      {header ? header(saveButton) : saveButton}
       <FilterBar filters={dashboard.filters} state={state} onChange={setState} data={shown?.data ?? null} />
       {failure && (
         <div className="flex flex-wrap items-center gap-3" data-data-error>
@@ -100,6 +125,35 @@ export function DashboardBody({ dashboard, dataset }: { dashboard: Dashboard; da
           />
         ))}
       </div>
+      {shown && saveOpen && (
+        <SaveToReportDialog
+          onClose={() => setSaveOpen(false)}
+          returnFocus={saveTrigger}
+          onSaved={(result) => {
+            setSaveOpen(false);
+            setSaved(result);
+          }}
+          dataset={dataset}
+          dashboard={dashboard}
+          results={results}
+          applied={shown.filters}
+          unapplied={unapplied}
+        />
+      )}
+      <Toast
+        message={saved ? savedMessage({ title: saved.report.title, count: saved.count, created: saved.created }) : null}
+        onDismiss={() => setSaved(null)}
+        action={
+          saved && (
+            <Link
+              to={`/reports/${saved.report.id}`}
+              className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Open report
+            </Link>
+          )
+        }
+      />
     </div>
   );
 }
